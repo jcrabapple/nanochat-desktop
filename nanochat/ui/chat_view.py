@@ -328,6 +328,33 @@ class ChatView(Gtk.Box):
             self.web_search_button.set_active(True)
             logger.info(f"Auto-enabled web search for {new_mode} mode")
 
+        # Show mode indicator toast
+        self._show_mode_indicator(config)
+
+    def _show_mode_indicator(self, config):
+        """Show temporary indicator when mode changes"""
+        # Create indicator label
+        indicator = Gtk.Label()
+
+        # Custom message for Standard mode vs other modes
+        if config.name == "Standard":
+            indicator.set_text("✓ Standard mode (default)")
+        else:
+            indicator.set_text(f"✓ {config.name} mode activated")
+
+        indicator.add_css_class("mode-indicator")
+
+        # Add to messages box at the top
+        self.messages_box.prepend(indicator)
+
+        # Remove after 2.5 seconds
+        GLib.timeout_add(2500, self._remove_mode_indicator, indicator)
+
+    def _remove_mode_indicator(self, indicator):
+        """Remove mode indicator after timeout"""
+        self.messages_box.remove(indicator)
+        return False  # Don't call again
+
     def get_current_mode(self):
         """Get current conversation mode"""
         return self.action_bar.get_current_mode()

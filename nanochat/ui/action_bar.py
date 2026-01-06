@@ -30,6 +30,7 @@ class ActionBar(Gtk.Box):
 
         self.current_mode = ConversationMode.STANDARD
         self.mode_buttons = {}
+        self._updating_mode = False  # Guard flag to prevent recursive updates
 
         self._build_ui()
         self._setup_shortcuts()
@@ -81,12 +82,23 @@ class ActionBar(Gtk.Box):
         Handle mode button toggle.
 
         Ensures only one mode is active at a time and emits signal when mode changes.
+        Clicking the currently active button switches back to Standard mode.
         """
-        if not button.get_active():
-            # Don't allow deselecting all modes - if deselecting current mode, re-select it
-            if self.current_mode == mode:
-                button.set_active(True)
+        # Prevent recursive calls
+        if self._updating_mode:
             return
+
+        if not button.get_active():
+            # Button is being deactivated
+            if self.current_mode == mode:
+                # Switch back to Standard mode
+                old_mode = self.current_mode
+                self.current_mode = ConversationMode.STANDARD
+                self.emit("mode-changed", old_mode, self.current_mode)
+            return
+
+        # Set guard flag
+        self._updating_mode = True
 
         # Deselect other buttons
         for m, btn in self.mode_buttons.items():
@@ -95,6 +107,9 @@ class ActionBar(Gtk.Box):
 
         old_mode = self.current_mode
         self.current_mode = mode
+
+        # Clear guard flag
+        self._updating_mode = False
 
         # Emit signal with new mode
         self.emit("mode-changed", old_mode, mode)
