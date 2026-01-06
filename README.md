@@ -17,17 +17,22 @@ A desktop AI chat application built with Python and GTK4, integrating with the N
 
 - Python 3.11+
 - GTK4 development libraries
+- PyGObject (Python bindings for GTK)
 - Linux (currently supports Linux only)
+
+**System packages required:**
 
 On Fedora/RHEL:
 ```bash
-sudo dnf install python3.11 python3.11-devel gtk4-devel
+sudo dnf install python3.11 python3.11-devel gtk4-devel python3-gobject
 ```
 
 On Ubuntu/Debian:
 ```bash
-sudo apt install python3.11 python3.11-dev libgtk-4-dev
+sudo apt install python3.11 python3.11-dev libgtk-4-dev python3-gi
 ```
+
+The Python `PyGObject` package requires the system GTK4 development libraries to be installed first.
 
 ### Setup
 
