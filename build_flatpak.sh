@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 
-VERSION="0.2.3"
+VERSION="0.2.4"
 REPO="jcrabapple/nanochat-desktop"
 
 echo "Building NanoChat Desktop Flatpak..."
 
 # Install flatpak-builder if not present
-if ! command -v flatpak-builder &> /dev/null; then
+if ! flatpak list | grep -q "org.flatpak.Builder"; then
     echo "flatpak-builder not found. Installing..."
-    flatpak install org.flathub.flatpak-builder
+    flatpak install --user flathub org.flatpak.Builder
 fi
 
 # Install GNOME platform SDK if not present
@@ -25,7 +25,7 @@ rm -rf build/flatpak-repo
 
 # Build Flatpak
 echo "Building Flatpak..."
-flatpak-builder --install --user --force-clean \
+flatpak run --command=flatpak-builder org.flatpak.Builder --install --user --force-clean \
     --repo=build/flatpak-repo \
     build/flatpak-build \
     com.nanochat.desktop.json
