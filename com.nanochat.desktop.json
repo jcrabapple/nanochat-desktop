@@ -31,9 +31,12 @@
                 "mkdir -p ${FLATPAK_DEST}/bin",
                 "cat > ${FLATPAK_DEST}/bin/nanochat << 'EOF'\n#!/bin/bash\nexport PYTHONPATH=${FLATPAK_DEST}/lib/python3.11/site-packages:${PYTHONPATH}\nexec python3 -m nanochat.main \"$@\"\nEOF",
                 "chmod +x ${FLATPAK_DEST}/bin/nanochat",
-                "install -Dm644 /run/build/nanochat-desktop/build/com.nanochat.desktop.desktop ${FLATPAK_DEST}/share/applications/com.nanochat.desktop.desktop",
-                "install -Dm644 /run/build/nanochat-desktop/build/com.nanochat.desktop.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.nanochat.desktop.appdata.xml",
-                "install -Dm644 /run/build/nanochat-desktop/build/nanochat.svg ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/com.nanochat.desktop.svg"
+                "install -Dm644 /run/build/nanochat-desktop/com.nanochat.desktop.desktop ${FLATPAK_DEST}/share/applications/com.nanochat.desktop.desktop",
+                "install -Dm644 /run/build/nanochat-desktop/icon.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/com.nanochat.desktop.png",
+                "install -Dm644 /run/build/nanochat-desktop/icon_128x128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/com.nanochat.desktop.png",
+                "install -Dm644 /run/build/nanochat-desktop/icon_64x64.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/com.nanochat.desktop.png",
+                "install -Dm644 /run/build/nanochat-desktop/icon_48x48.png ${FLATPAK_DEST}/share/icons/hicolor/48x48/apps/com.nanochat.desktop.png",
+                "install -Dm644 /run/build/nanochat-desktop/icon_32x32.png ${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/com.nanochat.desktop.png"
             ],
             "sources": [
                 {

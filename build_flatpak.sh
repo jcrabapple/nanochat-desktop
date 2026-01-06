@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.2.4"
+VERSION="0.3.1"
 REPO="jcrabapple/nanochat-desktop"
 
 echo "Building NanoChat Desktop Flatpak..."

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.2.2"
+VERSION="0.3.1"
 ARCH="x86_64"
 APPNAME="NanoChatDesktop"
 BUILDDIR="build/appimage-build"
@@ -25,8 +25,10 @@ fi
 
 if [ ! -f "$GTK_PLUGIN" ]; then
     echo "Downloading linuxdeploy GTK plugin..."
-    wget -q --show-progress "https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-${ARCH}.AppImage" -O "$GTK_PLUGIN"
-    chmod +x "$GTK_PLUGIN"
+    wget -q --show-progress "https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-${ARCH}.AppImage" -O "$GTK_PLUGIN" || echo "Warning: GTK plugin not available (not required for this build)"
+    if [ -f "$GTK_PLUGIN" ]; then
+        chmod +x "$GTK_PLUGIN"
+    fi
 fi
 
 # Create AppDir structure manually first
@@ -41,6 +43,28 @@ echo "Copying application files..."
 mkdir -p "$APPDIR/usr/lib/nanochat-desktop"
 cp -r nanochat "$APPDIR/usr/lib/nanochat-desktop/"
 cp .env.example "$APPDIR/usr/lib/nanochat-desktop/.env.example"
+
+# Copy desktop file
+echo "Installing desktop file..."
+cp com.nanochat.desktop.desktop "$APPDIR/com.nanochat.desktop.desktop"
+cp com.nanochat.desktop.desktop "$APPDIR/usr/share/applications/com.nanochat.desktop.desktop"
+
+# Install icons
+echo "Installing icons..."
+# Install main icon (scalable)
+cp icon.png "$APPDIR/com.nanochat.desktop.png"
+cp icon.png "$APPDIR/.icon"
+cp icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/com.nanochat.desktop.png"
+
+# Install additional sizes if available
+for size in 128x128 64x64 48x48 32x32; do
+    icon_file="icon_${size}.png"
+    if [ -f "$icon_file" ]; then
+        mkdir -p "$APPDIR/usr/share/icons/hicolor/${size}/apps"
+        cp "$icon_file" "$APPDIR/usr/share/icons/hicolor/${size}/apps/com.nanochat.desktop.png"
+        echo "  Installed ${size} icon"
+    fi
+done
 
 # Create launcher script
 cat > "$APPDIR/usr/bin/nanochat" << 'EOF'
@@ -64,40 +88,6 @@ fi
 exec python3 -m nanochat.main "$@"
 EOF
 chmod +x "$APPDIR/usr/bin/nanochat"
-
-# Create desktop file
-cat > "$APPDIR/com.nanochat.desktop.desktop" << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=NanoChat Desktop
-Comment=Desktop AI chat application
-Exec=nanochat
-Icon=nanochat
-Terminal=false
-Categories=GNOME;GTK;Network;
-EOF
-cp "$APPDIR/com.nanochat.desktop.desktop" "$APPDIR/usr/share/applications/"
-
-# Create icon
-cat > "$APPDIR/nanochat.svg" << 'EOFSVG'
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-  <rect width="256" height="256" rx="48" fill="#1a1b1e"/>
-  <rect width="256" height="256" rx="48" fill="#4a9eff" fill-opacity="0.2"/>
-  <text x="128" y="160" font-family="Arial, sans-serif" font-size="100" font-weight="bold" text-anchor="middle" fill="#4a9eff">NC</text>
-</svg>
-EOFSVG
-
-# Try to convert to PNG
-if command -v convert &> /dev/null; then
-    echo "Converting icon to PNG..."
-    convert -background none "$APPDIR/nanochat.svg" "$APPDIR/nanochat.png" 2>/dev/null || cp "$APPDIR/nanochat.svg" "$APPDIR/nanochat.png"
-fi
-
-cp "$APPDIR/nanochat.svg" "$APPDIR/usr/share/icons/hicolor/256x256/apps/nanochat.svg"
-if [ -f "$APPDIR/nanochat.png" ]; then
-    cp "$APPDIR/nanochat.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/nanochat.png"
-fi
 
 # Create AppInfo
 cat > "$APPDIR/usr/share/metainfo/com.nanochat.desktop.appdata.xml" << EOF

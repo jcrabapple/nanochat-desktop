@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NanoChat Desktop
+Comment=Desktop AI chat application with NanoGPT
+Exec=nanochat
+Icon=com.nanochat.desktop
+Terminal=false
+Categories=GNOME;GTK;Chat;Network;
+StartupNotify=true
+Keywords=AI;Chat;NanoGPT;Assistant;
