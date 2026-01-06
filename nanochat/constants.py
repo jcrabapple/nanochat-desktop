@@ -1,0 +1,30 @@
+"""Application constants"""
+
+# Application Info
+APP_ID = "com.nanochat.desktop"
+APP_NAME = "NanoChat Desktop"
+APP_VERSION = "0.1.0"
+
+# UI Constants
+DEFAULT_WINDOW_WIDTH = 1200
+DEFAULT_WINDOW_HEIGHT = 800
+SIDEBAR_DEFAULT_WIDTH = 280
+MIN_WINDOW_WIDTH = 800
+MIN_WINDOW_HEIGHT = 600
+
+# Colors (for dark theme)
+COLOR_BG = "#1a1b1e"
+COLOR_SIDEBAR_BG = "#202123"
+COLOR_HEADER_BG = "#1a1b1e"
+COLOR_BORDER = "#2a2b2e"
+COLOR_TEXT = "#e0e0e0"
+COLOR_TEXT_DIM = "#a0a0a0"
+COLOR_ACCENT = "#4a9eff"
+
+# Message limits
+MAX_MESSAGE_LENGTH = 32000
+DEFAULT_MAX_TOKENS = 2000
+
+# API Defaults
+DEFAULT_TEMPERATURE = 0.7
+DEFAULT_TIMEOUT = 60

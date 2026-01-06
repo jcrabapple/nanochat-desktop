@@ -1,0 +1,210 @@
+/* NanoChat Desktop - Dark Theme */
+
+window {
+    background-color: @window_bg_color;
+    color: @window_fg_color;
+}
+
+/* Main window background */
+window {
+    background-color: #1a1b1e;
+    color: #e0e0e0;
+}
+
+/* Header bar */
+headerbar {
+    background-color: #1a1b1e;
+    border-bottom: 1px solid #2a2b2e;
+    min-height: 48px;
+    padding: 0 12px;
+}
+
+headerbar windowcontrols button {
+    margin: 0;
+}
+
+/* Sidebar */
+.sidebar {
+    background-color: #202123;
+    border-right: 1px solid #2a2b2e;
+}
+
+/* New Chat button */
+button.suggested-action {
+    background-color: #4a9eff;
+    color: #ffffff;
+    font-weight: 500;
+}
+
+button.suggested-action:hover {
+    background-color: #5aafff;
+}
+
+/* Chat view */
+.chat-view {
+    background-color: #1a1b1e;
+}
+
+/* Message containers */
+.message-row {
+    padding: 12px 0;
+    border-bottom: 1px solid #2a2b2e;
+}
+
+.message-row.user {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.message-row.assistant {
+    background-color: transparent;
+}
+
+/* Message headers */
+.message-header {
+    font-size: 0.85em;
+    color: #a0a0a0;
+    margin-bottom: 8px;
+}
+
+.message-role {
+    font-weight: 600;
+    color: #e0e0e0;
+}
+
+.message-timestamp {
+    font-size: 0.9em;
+    color: #707070;
+}
+
+/* Message content */
+.message-content {
+    color: #e0e0e0;
+    line-height: 1.6;
+    font-size: 1em;
+}
+
+/* Code blocks */
+code {
+    background-color: #2a2b2e;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+pre {
+    background-color: #2a2b2e;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+pre code {
+    background-color: transparent;
+    padding: 0;
+}
+
+/* Links */
+link {
+    color: #4a9eff;
+    text-decoration: none;
+}
+
+link:hover {
+    text-decoration: underline;
+}
+
+/* Input area */
+.message-input {
+    background-color: #2a2b2e;
+    color: #e0e0e0;
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 44px;
+}
+
+.message-input:focus {
+    border: 2px solid #4a9eff;
+}
+
+/* Scrolled windows */
+scrolledwindow {
+    background-color: transparent;
+}
+
+/* Buttons */
+button {
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+button.flat {
+    background-color: transparent;
+    color: #e0e0e0;
+}
+
+button.flat:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Conversation list items */
+.conversation-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.conversation-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.conversation-item.active {
+    background-color: rgba(74, 158, 255, 0.2);
+    border-left: 3px solid #4a9eff;
+}
+
+/* Web search indicator */
+.message-web-indicator {
+    background-color: rgba(74, 158, 255, 0.15);
+    padding: 6px 12px;
+    border-radius: 4px;
+    margin: 8px 0;
+    font-size: 0.9em;
+    color: #4a9eff;
+}
+
+/* Sources section */
+.web-sources {
+    background-color: rgba(255, 255, 255, 0.03);
+    padding: 12px;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.sources-header {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #e0e0e0;
+}
+
+.source-link {
+    font-size: 0.9em;
+}
+
+/* Welcome screen */
+.welcome-title {
+    font-size: 2em;
+    font-weight: 600;
+    margin-bottom: 24px;
+}
+
+.pill {
+    border-radius: 20px;
+    padding: 12px 24px;
+}
+
+.suggested-prompt {
+    border-radius: 8px;
+    padding: 12px 16px;
+    text-align: left;
+}
