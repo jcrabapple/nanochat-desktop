@@ -23,15 +23,13 @@ class HeaderBar(Gtk.HeaderBar):
         self.set_title_widget(title_label)
 
         # Settings button (left side)
-        self.settings_button = Gtk.Button()
-        self.settings_button.set_icon_name("preferences-system-symbolic")
+        self.settings_button = Gtk.Button(label="Settings")
         self.settings_button.set_tooltip_text("Settings")
         self.settings_button.connect("clicked", self.on_settings_clicked)
         self.pack_start(self.settings_button)
 
         # Web search toggle (right side)
-        self.web_search_toggle = Gtk.ToggleButton()
-        self.web_search_toggle.set_icon_name("network-wireless-symbolic")
+        self.web_search_toggle = Gtk.ToggleButton(label="Web Search")
         self.web_search_toggle.set_tooltip_text("Enable Web Search")
         self.web_search_toggle.connect("toggled", self.on_web_search_toggled)
         self.pack_end(self.web_search_toggle)

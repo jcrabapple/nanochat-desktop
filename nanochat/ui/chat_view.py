@@ -73,7 +73,6 @@ class ChatView(Gtk.Box):
 
         # Send button
         self.send_button = Gtk.Button(label="Send")
-        self.send_button.set_icon_name("mail-send-symbolic")
         self.send_button.add_css_class("suggested-action")
         self.send_button.set_valign(Gtk.Align.END)
         self.send_button.set_sensitive(False)  # Disabled until text entered

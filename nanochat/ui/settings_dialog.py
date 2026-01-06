@@ -7,17 +7,11 @@ class SettingsDialog(Gtk.Dialog):
     """Settings dialog for API configuration"""
 
     def __init__(self, parent, current_api_key: str = "", current_base_url: str = "", current_model: str = ""):
-        super().__init__(
-            title="Settings",
-            parent=parent,
-            flags=Gtk.DialogFlags.MODAL,
-            buttons=(
-                "Cancel", Gtk.ResponseType.CANCEL,
-                "Save", Gtk.ResponseType.OK
-            )
-        )
+        super().__init__(title="Settings")
 
         self.set_default_size(500, 400)
+        self.set_modal(True)
+        self.set_transient_for(parent)
 
         # Main content
         content = self.get_content_area()
@@ -83,6 +77,10 @@ class SettingsDialog(Gtk.Dialog):
         info_label.set_wrap(True)
         info_box.append(info_label)
         form_box.append(info_box)
+
+        # Add buttons
+        self.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        self.add_button("Save", Gtk.ResponseType.OK)
 
     def on_show_api_key(self, checkbox):
         """Toggle API key visibility"""

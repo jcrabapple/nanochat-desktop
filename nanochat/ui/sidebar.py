@@ -100,11 +100,6 @@ class ConversationRow(Gtk.ListBoxRow):
         box.set_margin_top(8)
         box.set_margin_bottom(8)
 
-        # Icon
-        icon = Gtk.Image.new_from_icon_name("user-home-symbolic")
-        icon.set_pixel_size(20)
-        box.append(icon)
-
         # Title and metadata
         text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
 

@@ -34,8 +34,8 @@ class NanoChatApplication(Gtk.Application):
             # Initialize application state
             self.app_state = ApplicationState()
 
-            # Set app controller on window
-            self.window.set_app_controller(self.app_state)
+            # Set controllers on window
+            self.window.set_app_controllers(self, self.app_state)
 
             # Check if configured
             if not config.is_configured():

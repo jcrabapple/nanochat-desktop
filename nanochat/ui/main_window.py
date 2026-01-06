@@ -28,7 +28,8 @@ class MainWindow(Gtk.ApplicationWindow):
         # State
         self.current_conversation_id = None
         self.web_search_enabled = False
-        self.app_controller = None
+        self.app = None  # NanoChatApplication
+        self.app_state = None  # ApplicationState
 
     def load_css(self):
         """Load application CSS styling"""
@@ -82,9 +83,10 @@ class MainWindow(Gtk.ApplicationWindow):
         # Show welcome screen
         self.chat_view.show_welcome()
 
-    def set_app_controller(self, app_controller):
-        """Set application controller for callbacks"""
-        self.app_controller = app_controller
+    def set_app_controllers(self, app, app_state):
+        """Set application and application state controllers"""
+        self.app = app
+        self.app_state = app_state
 
     def on_settings(self, header_bar):
         """Show settings dialog"""
@@ -108,8 +110,8 @@ class MainWindow(Gtk.ApplicationWindow):
                 values['model']
             )
             # Reinitialize API client if controller exists
-            if self.app_controller:
-                self.app_controller.init_api_client(
+            if self.app_state:
+                self.app_state.init_api_client(
                     values['api_key'],
                     values['api_base_url'],
                     values['model']
@@ -133,8 +135,8 @@ class MainWindow(Gtk.ApplicationWindow):
         print(f"Selected conversation: {conversation_id}")
         self.current_conversation_id = conversation_id
         # Load messages if controller exists
-        if self.app_controller:
-            messages = self.app_controller.get_conversation_messages(conversation_id)
+        if self.app_state:
+            messages = self.app_state.get_conversation_messages(conversation_id)
             self.chat_view.clear()
             for msg in messages:
                 self.chat_view.add_message(msg['role'], msg['content'], msg.get('timestamp'))
@@ -142,8 +144,8 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_message_send(self, chat_view, message: str):
         """Handle message send"""
         print(f"Sending message: {message}")
-        if self.app_controller:
-            self.app_controller.send_message_async(
+        if self.app:
+            self.app.send_message_async(
                 message,
                 self.web_search_enabled
             )
