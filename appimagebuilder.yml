@@ -1,0 +1,47 @@
+version: 1
+AppDir:
+  path: build/AppDir
+  app_info:
+    id: com.nanochat.desktop
+    name: NanoChat Desktop
+    icon: nanochat
+    version: 0.2.2
+    exec: usr/bin/nanochat
+    exec_args: $@
+  runtime:
+    env:
+      PYTHONPATH: '${APPDIR}/usr/lib/python3.11/site-packages:${APPDIR}/usr/lib/nanochat-desktop:${PYTHONPATH}'
+  files:
+    include:
+    - usr/lib/python3.11/site-packages/**  # Python dependencies
+    - usr/lib/x86_64-linux-gnu/girepository-1.0/**  # GObject Introspection files
+    - usr/lib/x86_64-linux-gnu/libgtk-4.so.1*
+    - usr/lib/x86_64-linux-gnu/libglib-2.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libgio-2.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libpango-1.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libpangocairo-1.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libcairo.so.2*
+    - usr/lib/x86_64-linux-gnu/libgdk_pixbuf-2.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libgraphene-1.0.so.0*
+    - usr/lib/x86_64-linux-gnu/libharfbuzz.so.0*
+    - usr/lib/x86_64-linux-gnu/libfreetype.so.6*
+    - usr/lib/x86_64-linux-gnu/libfontconfig.so.1*
+    - usr/share/gir-1.0/**  # GIR files
+    exclude:
+    - usr/doc
+    - usr/man
+    - usr/share/doc
+    - usr/share/man
+    - usr/share/gtk-doc
+  after_runtime:
+  # Copy our Python application
+  - find nanochat -type d -exec install -D {} build/AppDir/usr/lib/nanochat-desktop/{} \;
+  - find nanochat -type f -exec install -D {} build/AppDir/usr/lib/nanochat-desktop/{} \;
+  - install -D build/AppDir/usr/bin/nanochat build/AppDir/usr/bin/nanochat
+
+AppImage:
+  update-information: none
+  arch: x86_64
+  sign-key: none
+  version: 0.2.2
