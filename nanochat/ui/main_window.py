@@ -148,6 +148,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.web_search_enabled = enabled
         print(f"Web search: {'enabled' if enabled else 'disabled'}")
 
+        # Save preference to current conversation
+        if self.app_state and self.current_conversation_id:
+            self.app_state.set_web_search_enabled(self.current_conversation_id, enabled)
+
     def on_new_chat(self, sidebar):
         """Handle new chat button"""
         print("New chat requested")
@@ -161,6 +165,10 @@ class MainWindow(Gtk.ApplicationWindow):
             conversations = self.app_state.get_all_conversations()
             self.sidebar.populate_conversations(conversations)
             self.sidebar.set_active_conversation(new_id)
+
+            # Reset web search to default (disabled) for new chat
+            self.chat_view.set_web_search_enabled(False)
+            self.web_search_enabled = False
 
         # Show welcome screen
         self.chat_view.show_welcome()
@@ -180,6 +188,11 @@ class MainWindow(Gtk.ApplicationWindow):
                     msg.get('timestamp'),
                     msg.get('web_sources')  # Include web_sources
                 )
+
+            # Load web search preference for this conversation
+            web_search_enabled = self.app_state.get_web_search_enabled(conversation_id)
+            self.chat_view.set_web_search_enabled(web_search_enabled)
+            self.web_search_enabled = web_search_enabled
 
     def on_conversation_deleted(self, sidebar, conversation_id):
         """Handle conversation deletion"""

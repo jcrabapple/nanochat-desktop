@@ -29,6 +29,15 @@ class Sidebar(Gtk.Box):
         self.new_chat_button.connect("clicked", self.on_new_chat)
         self.append(self.new_chat_button)
 
+        # Search entry
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Search conversations...")
+        self.search_entry.set_margin_start(12)
+        self.search_entry.set_margin_end(12)
+        self.search_entry.set_margin_bottom(12)
+        self.search_entry.connect("search-changed", self.on_search_changed)
+        self.append(self.search_entry)
+
         # Separator
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         self.append(separator)
@@ -48,6 +57,7 @@ class Sidebar(Gtk.Box):
 
         # Store conversation data
         self.conversations = []
+        self.all_conversations = []  # Store unfiltered conversations
 
     def on_new_chat(self, button):
         """Handle new chat button click"""
@@ -67,18 +77,101 @@ class Sidebar(Gtk.Box):
             conversations: List of conversation dicts with keys:
                           - id, title, updated_at, message_count
         """
+        # Store all conversations for filtering
+        self.all_conversations = conversations
+
+        # Apply current search filter if any
+        search_text = self.search_entry.get_text()
+        if search_text:
+            filtered = self._filter_conversations(conversations, search_text)
+            self._display_conversations(filtered)
+        else:
+            self._display_conversations(conversations)
+
+    def _display_conversations(self, conversations: list):
+        """Internal method to display conversations"""
         # Clear existing
         while self.conversation_list.get_first_child() is not None:
             self.conversation_list.remove(self.conversation_list.get_first_child())
 
         self.conversations = conversations
 
-        # Add conversations
+        # Group conversations by date
+        groups = self._group_by_date(conversations)
+
+        # Add conversations in groups
+        for group_name, convos in groups.items():
+            # Group header
+            header = Gtk.Label(label=group_name.upper())
+            header.add_css_class("conversation-group-header")
+            header.set_halign(Gtk.Align.START)
+            header.set_margin_start(12)
+            header.set_margin_top(12)
+            header.set_margin_bottom(4)
+            self.conversation_list.append(header)
+
+            # Conversations in group
+            for conv in convos:
+                row = ConversationRow(conv)
+                row.connect('delete-requested', self.on_delete_requested)
+                row.connect('rename-requested', self.on_rename_requested)
+                self.conversation_list.append(row)
+
+    def on_search_changed(self, search_entry):
+        """Handle search text changes"""
+        search_text = search_entry.get_text().strip().lower()
+
+        if not search_text:
+            # Show all conversations
+            self._display_conversations(self.all_conversations)
+        else:
+            # Filter conversations
+            filtered = self._filter_conversations(self.all_conversations, search_text)
+            self._display_conversations(filtered)
+
+    def _filter_conversations(self, conversations: list, search_text: str) -> list:
+        """Filter conversations by search text"""
+        return [
+            conv for conv in conversations
+            if search_text.lower() in conv['title'].lower()
+        ]
+
+    def _group_by_date(self, conversations: list) -> dict:
+        """Group conversations by time periods"""
+        from datetime import datetime, timedelta, timezone
+
+        groups = {
+            "Today": [],
+            "Last 7 Days": [],
+            "Last 30 Days": [],
+            "Older": []
+        }
+
+        now = datetime.now(timezone.utc)
+        today = now.date()
+        seven_days_ago = today - timedelta(days=7)
+        thirty_days_ago = today - timedelta(days=30)
+
         for conv in conversations:
-            row = ConversationRow(conv)
-            row.connect('delete-requested', self.on_delete_requested)
-            row.connect('rename-requested', self.on_rename_requested)
-            self.conversation_list.append(row)
+            try:
+                # Parse timestamp
+                updated_at = datetime.fromisoformat(conv['updated_at'].replace('Z', '+00:00'))
+                conv_date = updated_at.date()
+
+                if conv_date == today:
+                    groups["Today"].append(conv)
+                elif conv_date >= seven_days_ago:
+                    groups["Last 7 Days"].append(conv)
+                elif conv_date >= thirty_days_ago:
+                    groups["Last 30 Days"].append(conv)
+                else:
+                    groups["Older"].append(conv)
+            except:
+                # If parsing fails, put in "Older"
+                groups["Older"].append(conv)
+
+        # Remove empty groups
+        return {k: v for k, v in groups.items() if v}
 
     def on_delete_requested(self, row, conversation_id):
         """Handle delete request from conversation row"""

@@ -91,7 +91,8 @@ class ApplicationState:
                     'id': conv.id,
                     'title': conv.title,
                     'updated_at': conv.updated_at.isoformat(),
-                    'message_count': len(conv.messages)
+                    'message_count': len(conv.messages),
+                    'web_search_enabled': getattr(conv, 'web_search_enabled', False)
                 }
                 for conv in conversations
             ]
@@ -114,6 +115,22 @@ class ApplicationState:
             conv_repo = ConversationRepository(session)
             conversation = conv_repo.update_conversation_title(conversation_id, new_title)
             return conversation is not None
+
+    def set_web_search_enabled(self, conversation_id: int, enabled: bool) -> bool:
+        """Set web search preference for a conversation"""
+        with self.db.get_session() as session:
+            conv_repo = ConversationRepository(session)
+            conversation = conv_repo.update_web_search_enabled(conversation_id, enabled)
+            return conversation is not None
+
+    def get_web_search_enabled(self, conversation_id: int) -> bool:
+        """Get web search preference for a conversation"""
+        with self.db.get_session() as session:
+            conv_repo = ConversationRepository(session)
+            conversation = conv_repo.get_conversation(conversation_id)
+            if conversation:
+                return getattr(conversation, 'web_search_enabled', False)
+        return False
 
     async def send_message(self, message: str, use_web_search: bool = False):
         """

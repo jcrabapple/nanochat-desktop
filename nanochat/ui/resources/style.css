@@ -234,6 +234,15 @@ button.flat:hover {
     border-left: 3px solid #4a9eff;
 }
 
+/* Conversation group headers */
+.conversation-group-header {
+    font-size: 0.7em;
+    font-weight: 700;
+    color: #606060;
+    letter-spacing: 0.05em;
+    opacity: 0.9;
+}
+
 /* Web search indicator */
 .message-web-indicator {
     background-color: rgba(74, 158, 255, 0.15);
