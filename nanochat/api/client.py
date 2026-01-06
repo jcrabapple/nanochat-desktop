@@ -78,15 +78,81 @@ class NanoGPTClient:
         Yields:
             StreamChunk objects with response content
         """
+        if use_web_search:
+            # Use web search API
+            yield from self._web_search(message)
+        else:
+            # Use standard chat completions API
+            yield from self._chat_completions(message, conversation_history, stream, temperature, max_tokens)
+
+    async def _web_search(self, query: str) -> AsyncGenerator[StreamChunk, None]:
+        """Perform web search using NanoGPT's web search API"""
+        # Build request for web search endpoint
+        request_data = {
+            "query": query,
+            "depth": "standard",  # Use standard depth (cheaper)
+            "outputType": "sourcedAnswer"  # Get answer with sources
+        }
+
+        logger.info(f"Sending web search request to {self.web_endpoint}")
+
+        try:
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                async with session.post(
+                    self.web_endpoint,
+                    headers=self._get_headers(),
+                    json=request_data
+                ) as response:
+                    # Handle errors
+                    if response.status == 401:
+                        raise AuthenticationError("Invalid API key")
+                    elif response.status == 429:
+                        raise RateLimitError("Rate limit exceeded")
+                    elif response.status == 400:
+                        error_data = await response.json()
+                        raise InvalidRequestError(
+                            error_data.get('error', 'Invalid request'),
+                            status_code=400
+                        )
+                    elif response.status != 200:
+                        error_text = await response.text()
+                        raise APIError(
+                            f"API returned {response.status}: {error_text}",
+                            status_code=response.status
+                        )
+
+                    # Parse response (web search is NOT streaming)
+                    data = await response.json()
+
+                    if 'data' in data and 'answer' in data['data']:
+                        answer = data['data']['answer']
+                        sources = data['data'].get('sources', [])
+
+                        # Yield the answer as a single chunk
+                        yield StreamChunk(content=answer, done=True, web_sources=sources)
+                    else:
+                        raise APIError("Unexpected web search response format")
+
+        except asyncio.TimeoutError:
+            raise TimeoutError("Request timed out")
+        except aiohttp.ClientError as e:
+            raise ConnectionError(f"Connection error: {str(e)}")
+
+    async def _chat_completions(
+        self,
+        message: str,
+        conversation_history: list[dict],
+        stream: bool,
+        temperature: float,
+        max_tokens: int
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Send message to standard chat completions API"""
         # Prepare messages list
         messages = [
             {"role": msg["role"], "content": msg["content"]}
             for msg in conversation_history
         ]
         messages.append({"role": "user", "content": message})
-
-        # Choose endpoint
-        endpoint = self.web_endpoint if use_web_search else self.chat_endpoint
 
         # Build request
         request_data = {
@@ -97,17 +163,12 @@ class NanoGPTClient:
             "max_tokens": max_tokens
         }
 
-        if use_web_search:
-            # Web search endpoint requires the query in the request body
-            request_data["web_search"] = True
-            request_data["query"] = message  # Add the query parameter
-
-        logger.info(f"Sending request to {endpoint}")
+        logger.info(f"Sending request to {self.chat_endpoint}")
 
         try:
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 async with session.post(
-                    endpoint,
+                    self.chat_endpoint,
                     headers=self._get_headers(),
                     json=request_data
                 ) as response:
