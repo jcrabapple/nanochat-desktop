@@ -90,6 +90,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def on_settings(self, header_bar):
         """Show settings dialog"""
+        print("DEBUG: on_settings handler called")
         from nanochat.config import config
 
         dialog = SettingsDialog(
@@ -99,10 +100,13 @@ class MainWindow(Gtk.ApplicationWindow):
             current_model=config.model
         )
 
+        print("DEBUG: Showing settings dialog")
         response = dialog.run()
+        print(f"DEBUG: Dialog response = {response}")
 
         if response == Gtk.ResponseType.OK:
             values = dialog.get_values()
+            print(f"DEBUG: Saving config: api_key={'*' * len(values['api_key']) if values['api_key'] else 'None'}")
             # Save configuration
             config.save_to_file(
                 values['api_key'],
@@ -116,8 +120,10 @@ class MainWindow(Gtk.ApplicationWindow):
                     values['api_base_url'],
                     values['model']
                 )
+            print("DEBUG: Configuration saved successfully")
 
         dialog.destroy()
+        print("DEBUG: Dialog destroyed")
 
     def on_web_search_toggled(self, header_bar, enabled: bool):
         """Handle web search toggle"""
@@ -143,9 +149,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def on_message_send(self, chat_view, message: str):
         """Handle message send"""
-        print(f"Sending message: {message}")
+        print(f"DEBUG: on_message_send called with message: '{message[:50]}...'")
+        print(f"DEBUG: app = {self.app}, web_search_enabled = {self.web_search_enabled}")
         if self.app:
+            print("DEBUG: Calling app.send_message_async")
             self.app.send_message_async(
                 message,
                 self.web_search_enabled
             )
+        else:
+            print("DEBUG: No app controller available")

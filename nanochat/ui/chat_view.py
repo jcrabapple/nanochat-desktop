@@ -120,12 +120,16 @@ class ChatView(Gtk.Box):
 
     def on_send_clicked(self, button):
         """Handle send button click"""
+        print("DEBUG: Send button clicked")
         start, end = self.buffer.get_bounds()
         text = self.buffer.get_text(start, end, False)
 
         if text.strip():
+            print(f"DEBUG: Emitting message-send signal with text: '{text.strip()[:50]}...'")
             self.emit('message-send', text.strip())
             self.buffer.set_text("")  # Clear input
+        else:
+            print("DEBUG: No text to send")
 
     def add_message(self, role: str, content: str, timestamp: str = None):
         """

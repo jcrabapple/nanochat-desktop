@@ -39,6 +39,7 @@ class HeaderBar(Gtk.HeaderBar):
 
     def on_settings_clicked(self, button):
         """Handle settings button click"""
+        print("DEBUG: Settings button clicked")
         self.emit('settings-clicked')
 
     def on_web_search_toggled(self, button):
