@@ -13,6 +13,37 @@ A desktop AI chat application built with Python and GTK4, integrating with the N
 
 ## Installation
 
+### Option 1: AppImage (Recommended)
+
+Download the latest AppImage from the [Releases](https://github.com/jcrabapple/nanochat-desktop/releases) page.
+
+**IMPORTANT: AppImage requires GTK4 to be installed on your system.**
+
+The AppImage bundles Python and all Python dependencies, but GTK4 must be installed from your system package manager:
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install gtk4 gtk4-devel
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install libgtk-4-1 gir1.2-gtk-4.0
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S gtk4
+```
+
+After installing GTK4:
+```bash
+chmod +x NanoChatDesktop-*.AppImage
+./NanoChatDesktop-*.AppImage
+```
+
+### Option 2: From Source
+
 ### Prerequisites
 
 - Python 3.11+
