@@ -79,13 +79,21 @@ class NanoGPTClient:
             StreamChunk objects with response content
         """
         if use_web_search:
-            # Use web search API
-            async for chunk in self._web_search(message):
-                yield chunk
+            # Use web search API with proper cleanup
+            gen = self._web_search(message)
+            try:
+                async for chunk in gen:
+                    yield chunk
+            finally:
+                await gen.aclose()
         else:
-            # Use standard chat completions API
-            async for chunk in self._chat_completions(message, conversation_history, stream, temperature, max_tokens):
-                yield chunk
+            # Use standard chat completions API with proper cleanup
+            gen = self._chat_completions(message, conversation_history, stream, temperature, max_tokens)
+            try:
+                async for chunk in gen:
+                    yield chunk
+            finally:
+                await gen.aclose()
 
     async def _web_search(self, query: str):
         """Perform web search using NanoGPT's web search API"""
@@ -98,47 +106,62 @@ class NanoGPTClient:
 
         logger.info(f"Sending web search request to {self.web_endpoint}")
 
+        # Create session with proper cleanup
+        session = aiohttp.ClientSession(timeout=self.timeout)
         try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(
-                    self.web_endpoint,
-                    headers=self._get_headers(),
-                    json=request_data
-                ) as response:
-                    # Handle errors
-                    if response.status == 401:
-                        raise AuthenticationError("Invalid API key")
-                    elif response.status == 429:
-                        raise RateLimitError("Rate limit exceeded")
-                    elif response.status == 400:
-                        error_data = await response.json()
+            async with session.post(
+                self.web_endpoint,
+                headers=self._get_headers(),
+                json=request_data
+            ) as response:
+                # Handle errors
+                if response.status == 401:
+                    raise AuthenticationError("Invalid API key")
+                elif response.status == 429:
+                    raise RateLimitError("Rate limit exceeded")
+                elif response.status == 400:
+                    # Try to read error response, but don't fail if we can't
+                    try:
+                        error_text = await response.text()
                         raise InvalidRequestError(
-                            error_data.get('error', 'Invalid request'),
+                            error_text or 'Invalid request',
                             status_code=400
                         )
-                    elif response.status != 200:
+                    except Exception:
+                        raise InvalidRequestError('Invalid request', status_code=400)
+                elif response.status != 200:
+                    # Try to read error response, but don't fail if we can't
+                    try:
                         error_text = await response.text()
-                        raise APIError(
-                            f"API returned {response.status}: {error_text}",
-                            status_code=response.status
-                        )
+                    except Exception:
+                        error_text = f"HTTP {response.status}"
+                    raise APIError(
+                        f"API returned {response.status}: {error_text}",
+                        status_code=response.status
+                    )
 
-                    # Parse response (web search is NOT streaming)
+                # Parse response (web search is NOT streaming)
+                try:
                     data = await response.json()
+                except Exception as e:
+                    raise APIError(f"Failed to parse response: {str(e)}")
 
-                    if 'data' in data and 'answer' in data['data']:
-                        answer = data['data']['answer']
-                        sources = data['data'].get('sources', [])
+                if 'data' in data and 'answer' in data['data']:
+                    answer = data['data']['answer']
+                    sources = data['data'].get('sources', [])
 
-                        # Yield the answer as a single chunk
-                        yield StreamChunk(content=answer, done=True, web_sources=sources)
-                    else:
-                        raise APIError("Unexpected web search response format")
+                    # Yield the answer as a single chunk
+                    yield StreamChunk(content=answer, done=True, web_sources=sources)
+                else:
+                    raise APIError("Unexpected web search response format")
 
         except asyncio.TimeoutError:
             raise TimeoutError("Request timed out")
         except aiohttp.ClientError as e:
             raise ConnectionError(f"Connection error: {str(e)}")
+        finally:
+            # Always close the session
+            await session.close()
 
     async def _chat_completions(
         self,
@@ -167,45 +190,60 @@ class NanoGPTClient:
 
         logger.info(f"Sending request to {self.chat_endpoint}")
 
+        # Create session with proper cleanup
+        session = aiohttp.ClientSession(timeout=self.timeout)
         try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(
-                    self.chat_endpoint,
-                    headers=self._get_headers(),
-                    json=request_data
-                ) as response:
-                    # Handle errors
-                    if response.status == 401:
-                        raise AuthenticationError("Invalid API key")
-                    elif response.status == 429:
-                        raise RateLimitError("Rate limit exceeded")
-                    elif response.status == 400:
-                        error_data = await response.json()
+            async with session.post(
+                self.chat_endpoint,
+                headers=self._get_headers(),
+                json=request_data
+            ) as response:
+                # Handle errors
+                if response.status == 401:
+                    raise AuthenticationError("Invalid API key")
+                elif response.status == 429:
+                    raise RateLimitError("Rate limit exceeded")
+                elif response.status == 400:
+                    # Try to read error response, but don't fail if we can't
+                    try:
+                        error_text = await response.text()
                         raise InvalidRequestError(
-                            error_data.get('error', 'Invalid request'),
+                            error_text or 'Invalid request',
                             status_code=400
                         )
-                    elif response.status != 200:
+                    except Exception:
+                        raise InvalidRequestError('Invalid request', status_code=400)
+                elif response.status != 200:
+                    # Try to read error response, but don't fail if we can't
+                    try:
                         error_text = await response.text()
-                        raise APIError(
-                            f"API returned {response.status}: {error_text}",
-                            status_code=response.status
-                        )
+                    except Exception:
+                        error_text = f"HTTP {response.status}"
+                    raise APIError(
+                        f"API returned {response.status}: {error_text}",
+                        status_code=response.status
+                    )
 
-                    # Stream response
-                    if stream:
-                        async for chunk in self._process_stream(response):
-                            yield chunk
-                    else:
-                        # Non-streaming response
+                # Stream response
+                if stream:
+                    async for chunk in self._process_stream(response):
+                        yield chunk
+                else:
+                    # Non-streaming response
+                    try:
                         data = await response.json()
                         content = data['choices'][0]['message']['content']
                         yield StreamChunk(content=content, done=True)
+                    except Exception as e:
+                        raise APIError(f"Failed to parse response: {str(e)}")
 
         except asyncio.TimeoutError:
             raise TimeoutError("Request timed out")
         except aiohttp.ClientError as e:
             raise ConnectionError(f"Connection error: {str(e)}")
+        finally:
+            # Always close the session
+            await session.close()
 
     async def _process_stream(
         self,

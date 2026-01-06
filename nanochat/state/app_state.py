@@ -172,33 +172,40 @@ class ApplicationState:
         web_sources = None
         used_web_search = False
 
-        async for chunk in self.api_client.send_message(
+        # Create generator and ensure it's properly closed
+        gen = self.api_client.send_message(
             message=message,
             conversation_history=history[:-1],  # Exclude the message we just added
             use_web_search=use_web_search,
             stream=True
-        ):
-            if chunk.content:
-                response_content += chunk.content
-                yield ('assistant', chunk.content, None)
+        )
 
-            # Capture web_sources when available
-            if chunk.web_sources:
-                web_sources = chunk.web_sources
-                used_web_search = True
+        try:
+            async for chunk in gen:
+                if chunk.content:
+                    response_content += chunk.content
+                    yield ('assistant', chunk.content, None)
 
-            if chunk.done:
-                # Save assistant message WITH web_sources
-                with self.db.get_session() as session:
-                    msg_repo = MessageRepository(session)
-                    msg_repo.create_message(
-                        self.current_conversation_id,
-                        'assistant',
-                        response_content,
-                        used_web_search=used_web_search,
-                        web_sources=json.dumps(web_sources) if web_sources else None
-                    )
+                # Capture web_sources when available
+                if chunk.web_sources:
+                    web_sources = chunk.web_sources
+                    used_web_search = True
 
-                # Final yield with sources
-                yield ('assistant', None, web_sources)
-                break
+                if chunk.done:
+                    # Save assistant message WITH web_sources
+                    with self.db.get_session() as session:
+                        msg_repo = MessageRepository(session)
+                        msg_repo.create_message(
+                            self.current_conversation_id,
+                            'assistant',
+                            response_content,
+                            used_web_search=used_web_search,
+                            web_sources=json.dumps(web_sources) if web_sources else None
+                        )
+
+                    # Final yield with sources
+                    yield ('assistant', None, web_sources)
+                    break
+        finally:
+            # Ensure generator is closed to clean up resources
+            await gen.aclose()

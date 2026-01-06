@@ -93,17 +93,20 @@ class NanoChatApplication(Gtk.Application):
 
     async def _send_message_task(self, message: str, use_web_search: bool):
         """Async task for sending messages"""
+        # Reset accumulated message
+        self.current_assistant_message = ""
+        self.current_web_sources = None
+        first_chunk = True
+
+        # Show typing indicator
+        GLib.idle_add(self.window.chat_view.show_typing_indicator)
+
+        # Create generator and ensure it's properly closed
+        gen = self.app_state.send_message(message, use_web_search)
+
         try:
-            # Reset accumulated message
-            self.current_assistant_message = ""
-            self.current_web_sources = None
-            first_chunk = True
-
-            # Show typing indicator
-            GLib.idle_add(self.window.chat_view.show_typing_indicator)
-
             # Stream response (now returns 3-tuple: role, content, web_sources)
-            async for role, content, web_sources in self.app_state.send_message(message, use_web_search):
+            async for role, content, web_sources in gen:
                 if role == 'user':
                     # User message - add immediately
                     GLib.idle_add(self._update_chat_with_message, role, content, None, False)
@@ -135,20 +138,14 @@ class NanoChatApplication(Gtk.Application):
 
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
-            # Hide typing indicator on error
-            GLib.idle_add(self.window.chat_view.hide_typing_indicator)
             # Show error in UI
             GLib.idle_add(self._show_error, str(e))
         finally:
             # Ensure typing indicator is hidden
             GLib.idle_add(self.window.chat_view.hide_typing_indicator)
-            # Clean up any pending async tasks
-            import asyncio
+            # Close the generator to clean up resources
             try:
-                # Close any unclosed sessions
-                if hasattr(self.app_state.api_client, '_session'):
-                    # The aiohttp session should be closed properly
-                    pass
+                await gen.aclose()
             except Exception as cleanup_error:
                 logger.warning(f"Cleanup error: {cleanup_error}")
 
