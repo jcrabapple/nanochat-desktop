@@ -80,6 +80,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.chat_view = ChatView()
         self.chat_view.connect('message-send', self.on_message_send)
         self.chat_view.connect('web-search-toggled', self.on_web_search_toggled)
+        self.chat_view.connect('conversation-mode-changed', self.on_conversation_mode_changed)
         main_box.append(self.chat_view)
 
         # Show welcome screen
@@ -151,6 +152,14 @@ class MainWindow(Gtk.ApplicationWindow):
         # Save preference to current conversation
         if self.app_state and self.current_conversation_id:
             self.app_state.set_web_search_enabled(self.current_conversation_id, enabled)
+
+    def on_conversation_mode_changed(self, chat_view, mode):
+        """Handle conversation mode change from chat view"""
+        from nanochat.state.conversation_mode import ConversationMode
+
+        if self.app_state:
+            self.app_state.set_conversation_mode(mode)
+            print(f"Conversation mode changed to: {mode.value}")
 
     def on_new_chat(self, sidebar):
         """Handle new chat button"""

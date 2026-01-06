@@ -4,6 +4,7 @@ from datetime import datetime
 from nanochat.data import DatabaseManager, ConversationRepository, MessageRepository
 from nanochat.api import NanoGPTClient
 from nanochat.config import config
+from nanochat.state.conversation_mode import ConversationMode, get_mode_config
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ class ApplicationState:
 
         # Current conversation
         self.current_conversation_id = None
+
+        # Current conversation mode (default to STANDARD)
+        self.current_conversation_mode = ConversationMode.STANDARD
 
         logger.info("Application state initialized")
 
@@ -122,6 +126,26 @@ class ApplicationState:
             conv_repo = ConversationRepository(session)
             conversation = conv_repo.update_web_search_enabled(conversation_id, enabled)
             return conversation is not None
+
+    def set_conversation_mode(self, mode: ConversationMode):
+        """
+        Set current conversation mode.
+
+        Args:
+            mode: The conversation mode to switch to
+        """
+        self.current_conversation_mode = mode
+        logger.info(f"Conversation mode set to {mode.value}")
+
+        # Optionally save mode to preferences here for persistence
+
+    def get_conversation_mode(self) -> ConversationMode:
+        """Get current conversation mode"""
+        return self.current_conversation_mode
+
+    def get_mode_config(self):
+        """Get configuration for current mode"""
+        return get_mode_config(self.current_conversation_mode)
 
     def get_web_search_enabled(self, conversation_id: int) -> bool:
         """Get web search preference for a conversation"""

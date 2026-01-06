@@ -20,6 +20,9 @@ import html as html_lib
 import re
 import logging
 
+from nanochat.ui.action_bar import ActionBar
+from nanochat.state.conversation_mode import ConversationMode
+
 logger = logging.getLogger(__name__)
 
 
@@ -269,7 +272,8 @@ class ChatView(Gtk.Box):
 
     __gsignals__ = {
         'message-send': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
-        'web-search-toggled': (GObject.SIGNAL_RUN_FIRST, None, (bool,))
+        'web-search-toggled': (GObject.SIGNAL_RUN_FIRST, None, (bool,)),
+        'conversation-mode-changed': (GObject.SIGNAL_RUN_FIRST, None, (object,))
     }
 
     def __init__(self):
@@ -292,6 +296,11 @@ class ChatView(Gtk.Box):
 
         self.append(self.scrolled)
 
+        # Action bar for mode selection
+        self.action_bar = ActionBar()
+        self.action_bar.connect("mode-changed", self._on_mode_changed)
+        self.append(self.action_bar)
+
         # Input area
         self.input_box = self.create_input_area()
         self.append(self.input_box)
@@ -302,6 +311,30 @@ class ChatView(Gtk.Box):
 
         # Welcome screen (shown when no messages)
         self.welcome_screen = self.create_welcome_screen()
+
+    def _on_mode_changed(self, action_bar, old_mode, new_mode):
+        """Handle conversation mode change"""
+        logger.info(f"Conversation mode changed from {old_mode} to {new_mode}")
+
+        # Emit signal for main application to handle
+        self.emit("conversation-mode-changed", new_mode)
+
+        # Update web search button if mode requires it
+        from nanochat.state.conversation_mode import get_mode_config
+        config = get_mode_config(new_mode)
+
+        if config.enable_web_search and not self.web_search_button.get_active():
+            # Auto-enable web search for modes that require it
+            self.web_search_button.set_active(True)
+            logger.info(f"Auto-enabled web search for {new_mode} mode")
+
+    def get_current_mode(self):
+        """Get current conversation mode"""
+        return self.action_bar.get_current_mode()
+
+    def set_mode(self, mode):
+        """Set conversation mode programmatically"""
+        self.action_bar.set_mode(mode)
 
     def create_input_area(self) -> Gtk.Box:
         """Create message input area with floating buttons"""

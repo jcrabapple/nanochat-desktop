@@ -380,3 +380,36 @@ button.floating-button {
     padding: 12px 16px;
     border-radius: 18px;
 }
+
+/* Action Mode Buttons */
+.action-mode-button {
+    padding: 8px 16px;
+    border-radius: 20px;
+    background-color: #2a2b2e;
+    color: #e0e0e0;
+    border: 1px solid #3a3b3e;
+    transition: all 200ms;
+    font-weight: 500;
+}
+
+.action-mode-button:hover {
+    background-color: #3a3b3e;
+    border-color: #4a9eff;
+    color: #ffffff;
+}
+
+.action-mode-button:checked {
+    background-color: #4a9eff;
+    color: #ffffff;
+    border-color: #4a9eff;
+}
+
+/* Mode indicator toast */
+.mode-indicator {
+    background-color: rgba(74, 158, 255, 0.9);
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    margin: 8px 24px;
+}
