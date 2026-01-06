@@ -139,15 +139,14 @@ class NanoChatApplication(Gtk.Application):
 
     def _show_error(self, error_message: str):
         """Show error message to user"""
-        dialog = Gtk.MessageDialog(
-            parent=self.window,
-            message_type=Gtk.MessageType.ERROR,
-            buttons=Gtk.ButtonsType.OK,
-            text="Error"
-        )
-        dialog.format_secondary_text(error_message)
-        response = dialog.run()
-        dialog.destroy()
+        dialog = Gtk.MessageDialog()
+        dialog.set_message_type(Gtk.MessageType.ERROR)
+        dialog.add_button("OK", Gtk.ResponseType.OK)
+        dialog.set_text("Error")
+        dialog.set_secondary_text(error_message)
+        dialog.set_modal(True)
+        dialog.set_transient_for(self.window)
+        dialog.present()
         return False  # Don't repeat
 
 

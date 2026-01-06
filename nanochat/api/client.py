@@ -98,7 +98,9 @@ class NanoGPTClient:
         }
 
         if use_web_search:
+            # Web search endpoint requires the query in the request body
             request_data["web_search"] = True
+            request_data["query"] = message  # Add the query parameter
 
         logger.info(f"Sending request to {endpoint}")
 
