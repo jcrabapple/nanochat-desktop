@@ -215,13 +215,10 @@ class MessageRow(Gtk.Box):
         """Create message header with role and timestamp"""
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
-        # Role
-        role_label = Gtk.Label(label=self.role.capitalize())
+        # Role with bold markup
+        role_label = Gtk.Label()
+        role_label.set_markup(f"<b>{self.role.capitalize()}</b>")
         role_label.add_css_class("message-role")
-        # Bold weight for role label
-        attrs = Pango.AttrList()
-        attrs.insert(Pango.AttrWeight(Pango.Weight.BOLD, 0, -1))
-        role_label.set_attributes(attrs)
         box.append(role_label)
 
         # Timestamp
