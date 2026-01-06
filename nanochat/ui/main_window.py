@@ -100,30 +100,9 @@ class MainWindow(Gtk.ApplicationWindow):
             current_model=config.model
         )
 
-        print("DEBUG: Showing settings dialog")
-        response = dialog.run()
-        print(f"DEBUG: Dialog response = {response}")
-
-        if response == Gtk.ResponseType.OK:
-            values = dialog.get_values()
-            print(f"DEBUG: Saving config: api_key={'*' * len(values['api_key']) if values['api_key'] else 'None'}")
-            # Save configuration
-            config.save_to_file(
-                values['api_key'],
-                values['api_base_url'],
-                values['model']
-            )
-            # Reinitialize API client if controller exists
-            if self.app_state:
-                self.app_state.init_api_client(
-                    values['api_key'],
-                    values['api_base_url'],
-                    values['model']
-                )
-            print("DEBUG: Configuration saved successfully")
-
-        dialog.destroy()
-        print("DEBUG: Dialog destroyed")
+        print("DEBUG: Presenting settings dialog (GTK4 API)")
+        dialog.present()
+        print("DEBUG: Dialog presented (non-blocking)")
 
     def on_web_search_toggled(self, header_bar, enabled: bool):
         """Handle web search toggle"""

@@ -13,6 +13,9 @@ class SettingsDialog(Gtk.Dialog):
         self.set_modal(True)
         self.set_transient_for(parent)
 
+        # Store parent reference for callbacks
+        self.parent_window = parent
+
         # Main content
         content = self.get_content_area()
         content.set_margin_start(24)
@@ -78,9 +81,54 @@ class SettingsDialog(Gtk.Dialog):
         info_box.append(info_label)
         form_box.append(info_box)
 
-        # Add buttons
+        # Add buttons to header bar
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", self.on_cancel_clicked)
+
+        save_btn = Gtk.Button(label="Save")
+        save_btn.add_css_class("suggested-action")
+        save_btn.connect("clicked", self.on_save_clicked)
+
+        # Add buttons to dialog
         self.add_button("Cancel", Gtk.ResponseType.CANCEL)
         self.add_button("Save", Gtk.ResponseType.OK)
+
+        # Connect response signal
+        self.connect("response", self.on_response)
+
+    def on_response(self, dialog, response):
+        """Handle dialog response"""
+        print(f"DEBUG: Dialog response signal received: {response}")
+        if response == Gtk.ResponseType.OK:
+            values = self.get_values()
+            print(f"DEBUG: Saving config via callback")
+            # Save configuration
+            from nanochat.config import config
+            config.save_to_file(
+                values['api_key'],
+                values['api_base_url'],
+                values['model']
+            )
+
+            # Reinitialize API client if controller exists
+            if hasattr(self.parent_window, 'app_state') and self.parent_window.app_state:
+                self.parent_window.app_state.init_api_client(
+                    values['api_key'],
+                    values['api_base_url'],
+                    values['model']
+                )
+            print("DEBUG: Configuration saved successfully")
+
+        self.destroy()
+        print("DEBUG: Dialog destroyed")
+
+    def on_save_clicked(self, button):
+        """Handle save button click"""
+        self.response(Gtk.ResponseType.OK)
+
+    def on_cancel_clicked(self, button):
+        """Handle cancel button click"""
+        self.response(Gtk.ResponseType.CANCEL)
 
     def on_show_api_key(self, checkbox):
         """Toggle API key visibility"""
