@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Optional
+from typing import Optional
 from nanochat.api.exceptions import *
 from nanochat.api.models import ChatRequest, ChatResponse, StreamChunk, Message
 
@@ -63,7 +63,7 @@ class NanoGPTClient:
         stream: bool = True,
         temperature: float = 0.7,
         max_tokens: int = 2000
-    ) -> AsyncGenerator[StreamChunk, None]:
+    ):
         """
         Send message to API and stream response
 
@@ -80,12 +80,14 @@ class NanoGPTClient:
         """
         if use_web_search:
             # Use web search API
-            yield from self._web_search(message)
+            async for chunk in self._web_search(message):
+                yield chunk
         else:
             # Use standard chat completions API
-            yield from self._chat_completions(message, conversation_history, stream, temperature, max_tokens)
+            async for chunk in self._chat_completions(message, conversation_history, stream, temperature, max_tokens):
+                yield chunk
 
-    async def _web_search(self, query: str) -> AsyncGenerator[StreamChunk, None]:
+    async def _web_search(self, query: str):
         """Perform web search using NanoGPT's web search API"""
         # Build request for web search endpoint
         request_data = {
@@ -145,7 +147,7 @@ class NanoGPTClient:
         stream: bool,
         temperature: float,
         max_tokens: int
-    ) -> AsyncGenerator[StreamChunk, None]:
+    ):
         """Send message to standard chat completions API"""
         # Prepare messages list
         messages = [
@@ -208,7 +210,7 @@ class NanoGPTClient:
     async def _process_stream(
         self,
         response: aiohttp.ClientResponse
-    ) -> AsyncGenerator[StreamChunk, None]:
+    ):
         """
         Process streaming response
 

@@ -62,13 +62,13 @@ class MainWindow(Gtk.ApplicationWindow):
         # Header bar
         self.header_bar = HeaderBar()
         self.header_bar.connect('settings-clicked', self.on_settings)
-        self.header_bar.connect('web-search-toggled', self.on_web_search_toggled)
         self.set_titlebar(self.header_bar)
 
         # Sidebar
         self.sidebar = Sidebar()
         self.sidebar.connect('new-chat', self.on_new_chat)
         self.sidebar.connect('conversation-selected', self.on_conversation_selected)
+        self.sidebar.connect('conversation-deleted', self.on_conversation_deleted)
         main_box.append(self.sidebar)
 
         # Separator
@@ -78,6 +78,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Chat view
         self.chat_view = ChatView()
         self.chat_view.connect('message-send', self.on_message_send)
+        self.chat_view.connect('web-search-toggled', self.on_web_search_toggled)
         main_box.append(self.chat_view)
 
         # Show welcome screen
@@ -104,16 +105,27 @@ class MainWindow(Gtk.ApplicationWindow):
         dialog.present()
         print("DEBUG: Dialog presented (non-blocking)")
 
-    def on_web_search_toggled(self, header_bar, enabled: bool):
-        """Handle web search toggle"""
+    def on_web_search_toggled(self, chat_view, enabled: bool):
+        """Handle web search toggle from chat view"""
         self.web_search_enabled = enabled
         print(f"Web search: {'enabled' if enabled else 'disabled'}")
 
     def on_new_chat(self, sidebar):
         """Handle new chat button"""
         print("New chat requested")
+
+        # Create new conversation in database
+        if self.app_state:
+            new_id = self.app_state.create_conversation()
+            self.current_conversation_id = new_id
+
+            # Reload sidebar to show new conversation
+            conversations = self.app_state.get_all_conversations()
+            self.sidebar.populate_conversations(conversations)
+            self.sidebar.set_active_conversation(new_id)
+
+        # Show welcome screen
         self.chat_view.show_welcome()
-        self.current_conversation_id = None
 
     def on_conversation_selected(self, sidebar, conversation_id):
         """Handle conversation selection"""
@@ -124,7 +136,26 @@ class MainWindow(Gtk.ApplicationWindow):
             messages = self.app_state.get_conversation_messages(conversation_id)
             self.chat_view.clear()
             for msg in messages:
-                self.chat_view.add_message(msg['role'], msg['content'], msg.get('timestamp'))
+                self.chat_view.add_message(
+                    msg['role'],
+                    msg['content'],
+                    msg.get('timestamp'),
+                    msg.get('web_sources')  # Include web_sources
+                )
+
+    def on_conversation_deleted(self, sidebar, conversation_id):
+        """Handle conversation deletion"""
+        print(f"Deleting conversation: {conversation_id}")
+        if self.app_state:
+            success = self.app_state.delete_conversation(conversation_id)
+            if success:
+                # Clear chat view if deleted conversation was current
+                if self.current_conversation_id == conversation_id:
+                    self.current_conversation_id = None
+                    self.chat_view.show_welcome()
+                # Reload conversation list
+                conversations = self.app_state.get_all_conversations()
+                self.sidebar.populate_conversations(conversations)
 
     def on_message_send(self, chat_view, message: str):
         """Handle message send"""

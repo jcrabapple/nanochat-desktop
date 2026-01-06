@@ -96,23 +96,32 @@ class NanoChatApplication(Gtk.Application):
         try:
             # Reset accumulated message
             self.current_assistant_message = ""
+            self.current_web_sources = None
             first_chunk = True
 
-            # Stream response
-            async for role, content in self.app_state.send_message(message, use_web_search):
+            # Stream response (now returns 3-tuple: role, content, web_sources)
+            async for role, content, web_sources in self.app_state.send_message(message, use_web_search):
                 if role == 'user':
                     # User message - add immediately
-                    GLib.idle_add(self._update_chat_with_message, role, content, False)
+                    GLib.idle_add(self._update_chat_with_message, role, content, None, False)
                 elif role == 'assistant':
-                    # Assistant message - accumulate chunks
-                    self.current_assistant_message += content
-                    if first_chunk:
-                        # Create message row on first chunk
-                        GLib.idle_add(self._update_chat_with_message, role, self.current_assistant_message, False)
-                        first_chunk = False
-                    else:
-                        # Update existing message row
-                        GLib.idle_add(self._update_chat_with_message, role, self.current_assistant_message, True)
+                    # Assistant message
+                    if content:
+                        # Accumulate content chunks
+                        self.current_assistant_message += content
+                        if first_chunk:
+                            # Create message row on first chunk
+                            GLib.idle_add(self._update_chat_with_message, role, self.current_assistant_message, None, False)
+                            first_chunk = False
+                        else:
+                            # Update existing message row
+                            GLib.idle_add(self._update_chat_with_message, role, self.current_assistant_message, None, True)
+
+                    if web_sources:
+                        # Store sources for final update
+                        self.current_web_sources = web_sources
+                        # Add/update sources in UI
+                        GLib.idle_add(self._update_chat_with_message, role, None, self.current_web_sources, True)
 
             # Reload conversations (updated timestamp)
             GLib.idle_add(self.load_conversations)
@@ -132,9 +141,14 @@ class NanoChatApplication(Gtk.Application):
             except Exception as cleanup_error:
                 logger.warning(f"Cleanup error: {cleanup_error}")
 
-    def _update_chat_with_message(self, role: str, content: str, update_last: bool = False):
+    def _update_chat_with_message(self, role: str, content: str = None, web_sources: list = None, update_last: bool = False):
         """Update chat view with message (called on main thread)"""
-        self.window.chat_view.add_message(role, content, update_last=update_last)
+        self.window.chat_view.add_message(
+            role=role,
+            content=content or "",
+            web_sources=web_sources,
+            update_last=update_last
+        )
         return False  # Don't repeat
 
     def _show_error(self, error_message: str):

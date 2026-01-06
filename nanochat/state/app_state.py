@@ -61,6 +61,8 @@ class ApplicationState:
 
     def get_conversation_messages(self, conversation_id: int) -> list:
         """Get all messages for a conversation"""
+        import json
+
         with self.db.get_session() as session:
             msg_repo = MessageRepository(session)
             messages = msg_repo.get_messages(conversation_id)
@@ -70,7 +72,9 @@ class ApplicationState:
                 {
                     'role': msg.role,
                     'content': msg.content,
-                    'timestamp': msg.created_at.isoformat()
+                    'timestamp': msg.created_at.isoformat(),
+                    'used_web_search': msg.used_web_search,
+                    'web_sources': json.loads(msg.web_sources) if msg.web_sources else None
                 }
                 for msg in messages
             ]
@@ -92,6 +96,18 @@ class ApplicationState:
                 for conv in conversations
             ]
 
+    def delete_conversation(self, conversation_id: int) -> bool:
+        """Delete a conversation"""
+        with self.db.get_session() as session:
+            conv_repo = ConversationRepository(session)
+            success = conv_repo.delete_conversation(conversation_id)
+
+            # Clear current conversation if it was deleted
+            if success and self.current_conversation_id == conversation_id:
+                self.current_conversation_id = None
+
+            return success
+
     async def send_message(self, message: str, use_web_search: bool = False):
         """
         Send message and get response
@@ -101,8 +117,10 @@ class ApplicationState:
             use_web_search: Whether to use web search
 
         Yields:
-            Tuples of (role, content) as they arrive
+            Tuples of (role, content, web_sources) as they arrive
         """
+        import json
+
         if not self.api_client:
             raise ValueError("API client not initialized")
 
@@ -120,13 +138,16 @@ class ApplicationState:
             )
 
         # Yield user message
-        yield ('user', message)
+        yield ('user', message, None)
 
         # Get conversation history
         history = self.get_conversation_messages(self.current_conversation_id)
 
         # Send to API and stream response
         response_content = ""
+        web_sources = None
+        used_web_search = False
+
         async for chunk in self.api_client.send_message(
             message=message,
             conversation_history=history[:-1],  # Exclude the message we just added
@@ -135,15 +156,25 @@ class ApplicationState:
         ):
             if chunk.content:
                 response_content += chunk.content
-                yield ('assistant', chunk.content)
+                yield ('assistant', chunk.content, None)
+
+            # Capture web_sources when available
+            if chunk.web_sources:
+                web_sources = chunk.web_sources
+                used_web_search = True
 
             if chunk.done:
-                # Save assistant message
+                # Save assistant message WITH web_sources
                 with self.db.get_session() as session:
                     msg_repo = MessageRepository(session)
                     msg_repo.create_message(
                         self.current_conversation_id,
                         'assistant',
-                        response_content
+                        response_content,
+                        used_web_search=used_web_search,
+                        web_sources=json.dumps(web_sources) if web_sources else None
                     )
+
+                # Final yield with sources
+                yield ('assistant', None, web_sources)
                 break

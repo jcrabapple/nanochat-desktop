@@ -1,6 +1,6 @@
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, GObject
+from gi.repository import Gtk, GObject, Gdk
 
 
 class Sidebar(Gtk.Box):
@@ -8,7 +8,8 @@ class Sidebar(Gtk.Box):
 
     __gsignals__ = {
         'new-chat': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'conversation-selected': (GObject.SIGNAL_RUN_FIRST, None, (object,))
+        'conversation-selected': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        'conversation-deleted': (GObject.SIGNAL_RUN_FIRST, None, (object,))
     }
 
     def __init__(self):
@@ -74,7 +75,12 @@ class Sidebar(Gtk.Box):
         # Add conversations
         for conv in conversations:
             row = ConversationRow(conv)
+            row.connect('delete-requested', self.on_delete_requested)
             self.conversation_list.append(row)
+
+    def on_delete_requested(self, row, conversation_id):
+        """Handle delete request from conversation row"""
+        self.emit('conversation-deleted', conversation_id)
 
     def set_active_conversation(self, conversation_id: int):
         """Highlight active conversation"""
@@ -87,6 +93,10 @@ class Sidebar(Gtk.Box):
 
 class ConversationRow(Gtk.ListBoxRow):
     """Single conversation row in sidebar"""
+
+    __gsignals__ = {
+        'delete-requested': (GObject.SIGNAL_RUN_FIRST, None, (object,))
+    }
 
     def __init__(self, conversation: dict):
         super().__init__()
@@ -119,4 +129,74 @@ class ConversationRow(Gtk.ListBoxRow):
         text_box.append(meta_label)
 
         box.append(text_box)
+
+        # Delete button (trash icon, initially hidden)
+        self.delete_button = Gtk.Button()
+        trash_icon = Gtk.Image.new_from_icon_name("user-trash-symbolic")
+        trash_icon.set_pixel_size(16)
+        self.delete_button.set_child(trash_icon)
+        self.delete_button.set_tooltip_text("Delete conversation")
+        self.delete_button.add_css_class("delete-button")
+        self.delete_button.set_opacity(0)  # Hidden initially
+        self.delete_button.connect("clicked", self.on_delete_clicked)
+        box.append(self.delete_button)
+
         self.set_child(box)
+
+        # Add hover controller to the main box
+        hover_controller = Gtk.EventControllerMotion()
+        hover_controller.connect("enter", self.on_hover_enter)
+        hover_controller.connect("leave", self.on_hover_leave)
+        box.add_controller(hover_controller)
+
+        # Add right-click controller
+        click_controller = Gtk.GestureClick()
+        click_controller.set_button(3)  # Right click
+        click_controller.connect("pressed", self.on_right_click)
+        box.add_controller(click_controller)
+
+    def on_hover_enter(self, controller, x, y):
+        """Show delete button on hover"""
+        self.delete_button.set_opacity(1)
+
+    def on_hover_leave(self, controller):
+        """Hide delete button when hover ends"""
+        self.delete_button.set_opacity(0)
+
+    def on_delete_clicked(self, button):
+        """Handle delete button click"""
+        self.emit('delete-requested', self.conversation_id)
+
+    def on_right_click(self, gesture, n_press, x, y):
+        """Show context menu on right-click"""
+        if n_press == 1:
+            # Create popover menu
+            popover = Gtk.Popover()
+            popover.set_parent(self)
+
+            # Position popover in the center of the row
+            allocation = self.get_allocation()
+            rect = Gdk.Rectangle()
+            rect.x = allocation.width / 2
+            rect.y = allocation.height / 2
+            rect.width = 1
+            rect.height = 1
+            popover.set_pointing_to(rect)
+
+            # Create delete button
+            delete_btn = Gtk.Button(label="Delete")
+            delete_btn.connect("clicked", self.on_context_delete_close, popover)
+            delete_btn.add_css_class("menu-item")
+
+            # Add to popover
+            popover.set_child(delete_btn)
+            popover.popup()
+
+    def on_context_delete_close(self, widget, popover):
+        """Handle delete from context menu and close popover"""
+        popover.popdown()
+        self.emit('delete-requested', self.conversation_id)
+
+    def on_context_delete(self, widget):
+        """Handle delete from context menu"""
+        self.emit('delete-requested', self.conversation_id)
