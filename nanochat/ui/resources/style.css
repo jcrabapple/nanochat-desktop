@@ -104,40 +104,17 @@ button.suggested-action:hover {
     background-color: #2a2b2e;
     border-radius: 18px;
     margin: 8px 12px;
-    max-width: 200px;
 }
 
+/* Note: Animation not supported in GTK CSS, dots will be static */
 .typing-dots {
-    display: flex;
-    gap: 4px;
-    justify-content: center;
 }
 
 .typing-dot {
-    width: 8px;
-    height: 8px;
     background-color: #4a9eff;
     border-radius: 50%;
-    animation: typing-bounce 1.4s infinite ease-in-out both;
-}
-
-.typing-dot:nth-child(1) {
-    animation-delay: -0.32s;
-}
-
-.typing-dot:nth-child(2) {
-    animation-delay: -0.16s;
-}
-
-@keyframes typing-bounce {
-    0%, 80%, 100% {
-        transform: scale(0.8);
-        opacity: 0.5;
-    }
-    40% {
-        transform: scale(1);
-        opacity: 1;
-    }
+    min-width: 8px;
+    min-height: 8px;
 }
 
 .message-role {
