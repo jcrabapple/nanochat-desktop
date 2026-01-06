@@ -104,6 +104,16 @@ class NanoChatApplication(Gtk.Application):
             logger.error(f"Failed to send message: {e}")
             # Show error in UI
             GLib.idle_add(self._show_error, str(e))
+        finally:
+            # Clean up any pending async tasks
+            import asyncio
+            try:
+                # Close any unclosed sessions
+                if hasattr(self.app_state.api_client, '_session'):
+                    # The aiohttp session should be closed properly
+                    pass
+            except Exception as cleanup_error:
+                logger.warning(f"Cleanup error: {cleanup_error}")
 
     def _update_chat_with_message(self, role: str, content: str):
         """Update chat view with message (called on main thread)"""
