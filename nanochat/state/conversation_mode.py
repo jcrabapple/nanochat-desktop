@@ -43,7 +43,7 @@ MODE_CONFIGS = {
 
     ConversationMode.CREATE: ModeConfig(
         name="Create",
-        icon="document-new-symbolic",
+        icon="list-add-symbolic",
         system_prompt="You are a creative assistant. Help users create content including articles, stories, marketing copy, and more. Be imaginative and engaging.",
         temperature=0.8,
         enable_web_search=False,
