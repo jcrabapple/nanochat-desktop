@@ -296,6 +296,10 @@ class ChatView(Gtk.Box):
         self.input_box = self.create_input_area()
         self.append(self.input_box)
 
+        # Typing indicator (hidden by default)
+        self.typing_indicator = self.create_typing_indicator()
+        self.typing_indicator.set_visible(False)
+
         # Welcome screen (shown when no messages)
         self.welcome_screen = self.create_welcome_screen()
 
@@ -396,6 +400,43 @@ class ChatView(Gtk.Box):
 
         return box
 
+    def create_typing_indicator(self) -> Gtk.Box:
+        """Create typing indicator widget"""
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        box.add_css_class("typing-indicator")
+
+        # Create three bouncing dots
+        dots_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        dots_box.add_css_class("typing-dots")
+
+        for _ in range(3):
+            dot = Gtk.Box()
+            dot.add_css_class("typing-dot")
+            dot.set_size_request(8, 8)
+            dots_box.append(dot)
+
+        box.append(dots_box)
+        return box
+
+    def show_typing_indicator(self):
+        """Show typing indicator"""
+        # Hide welcome screen if visible
+        if self.welcome_screen.get_parent():
+            self.messages_box.remove(self.welcome_screen)
+
+        # Add typing indicator if not already present
+        if not self.typing_indicator.get_parent():
+            self.messages_box.append(self.typing_indicator)
+
+        self.typing_indicator.set_visible(True)
+        # Scroll to bottom to show indicator
+        GLib.timeout_add(100, self.scroll_to_bottom)
+
+    def hide_typing_indicator(self):
+        """Hide typing indicator"""
+        if self.typing_indicator.get_parent():
+            self.messages_box.remove(self.typing_indicator)
+
     def on_text_changed(self, buffer):
         """Enable/disable send button based on text"""
         start, end = buffer.get_bounds()
@@ -429,6 +470,12 @@ class ChatView(Gtk.Box):
             button.set_tooltip_text("Enable Web Search")
 
         self.emit('web-search-toggled', is_active)
+
+    def toggle_web_search(self):
+        """Toggle web search programmatically (for keyboard shortcut)"""
+        current_state = self.web_search_button.get_active()
+        self.web_search_button.set_active(not current_state)
+        self.web_search_button.grab_focus()  # Focus the button to show the toggle
 
     def on_send_clicked(self, button):
         """Handle send button click"""
@@ -519,6 +566,7 @@ class MessageRow(Gtk.Box):
         self.role = role
         self.content = content
         self.web_sources = web_sources
+        self.timestamp_str = timestamp
 
         # Add CSS class based on role
         self.add_css_class(f"message-row")
@@ -537,9 +585,9 @@ class MessageRow(Gtk.Box):
             align_container.set_halign(Gtk.Align.END)
             align_container.set_hexpand(True)
 
-            # User label
-            label = self._create_role_label("User")
-            align_container.append(label)
+            # User label with timestamp
+            header_box = self._create_message_header("User", timestamp)
+            align_container.append(header_box)
 
             # User bubble
             self.content_widget = self._create_user_bubble(content)
@@ -554,9 +602,9 @@ class MessageRow(Gtk.Box):
             align_container.set_halign(Gtk.Align.START)
             align_container.set_hexpand(True)
 
-            # Assistant label
-            label = self._create_role_label("Assistant")
-            align_container.append(label)
+            # Assistant label with timestamp
+            header_box = self._create_message_header("Assistant", timestamp)
+            align_container.append(header_box)
 
             # Assistant bubble
             self.content_widget = self._create_assistant_bubble(content)
@@ -569,6 +617,60 @@ class MessageRow(Gtk.Box):
                 align_container.append(self.sources_box)
 
             self.append(align_container)
+
+    def _create_message_header(self, role_name: str, timestamp: str) -> Gtk.Box:
+        """Create message header with role label and timestamp"""
+        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        header_box.set_halign(Gtk.Align.START)
+
+        # Avatar (emoji)
+        avatar_label = Gtk.Label(label="🤖" if role_name == "Assistant" else "👤")
+        avatar_label.add_css_class("message-avatar")
+        header_box.append(avatar_label)
+
+        # Role label
+        role_label = Gtk.Label(label=role_name)
+        role_label.add_css_class("message-role-label")
+        header_box.append(role_label)
+
+        # Timestamp label (if provided)
+        if timestamp:
+            from datetime import datetime
+            try:
+                # Parse ISO timestamp and format relative time
+                ts = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                relative_time = self._format_relative_time(ts)
+                time_label = Gtk.Label(label=relative_time)
+                time_label.add_css_class("message-timestamp")
+                header_box.append(time_label)
+            except:
+                pass  # If timestamp parsing fails, just don't show it
+
+        return header_box
+
+    def _format_relative_time(self, dt) -> str:
+        """Format datetime as relative time string"""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        delta = now - dt
+
+        seconds = delta.total_seconds()
+
+        if seconds < 60:
+            return "just now"
+        elif seconds < 3600:
+            minutes = int(seconds / 60)
+            return f"{minutes}m ago"
+        elif seconds < 86400:
+            hours = int(seconds / 3600)
+            return f"{hours}h ago"
+        elif seconds < 604800:
+            days = int(seconds / 86400)
+            return f"{days}d ago"
+        else:
+            # For older messages, show the date
+            return dt.strftime("%b %d, %Y")
 
     def _create_role_label(self, role_name: str) -> Gtk.Label:
         """Create role label"""

@@ -99,12 +99,19 @@ class NanoChatApplication(Gtk.Application):
             self.current_web_sources = None
             first_chunk = True
 
+            # Show typing indicator
+            GLib.idle_add(self.window.chat_view.show_typing_indicator)
+
             # Stream response (now returns 3-tuple: role, content, web_sources)
             async for role, content, web_sources in self.app_state.send_message(message, use_web_search):
                 if role == 'user':
                     # User message - add immediately
                     GLib.idle_add(self._update_chat_with_message, role, content, None, False)
                 elif role == 'assistant':
+                    # Hide typing indicator on first assistant chunk
+                    if first_chunk:
+                        GLib.idle_add(self.window.chat_view.hide_typing_indicator)
+
                     # Assistant message
                     if content:
                         # Accumulate content chunks
@@ -128,9 +135,13 @@ class NanoChatApplication(Gtk.Application):
 
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
+            # Hide typing indicator on error
+            GLib.idle_add(self.window.chat_view.hide_typing_indicator)
             # Show error in UI
             GLib.idle_add(self._show_error, str(e))
         finally:
+            # Ensure typing indicator is hidden
+            GLib.idle_add(self.window.chat_view.hide_typing_indicator)
             # Clean up any pending async tasks
             import asyncio
             try:

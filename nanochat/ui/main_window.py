@@ -69,6 +69,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sidebar.connect('new-chat', self.on_new_chat)
         self.sidebar.connect('conversation-selected', self.on_conversation_selected)
         self.sidebar.connect('conversation-deleted', self.on_conversation_deleted)
+        self.sidebar.connect('conversation-renamed', self.on_conversation_renamed)
         main_box.append(self.sidebar)
 
         # Separator
@@ -83,6 +84,43 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Show welcome screen
         self.chat_view.show_welcome()
+
+        # Add keyboard shortcuts
+        self.setup_shortcuts()
+
+    def setup_shortcuts(self):
+        """Setup keyboard shortcuts"""
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self.on_key_pressed)
+        self.add_controller(key_controller)
+
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        """Handle keyboard shortcuts"""
+        # Check for Ctrl modifier
+        ctrl_pressed = (state & Gdk.ModifierType.CONTROL_MASK) != 0
+
+        if ctrl_pressed:
+            # Ctrl+N - New Chat
+            if keyval == Gdk.KEY_n:
+                self.on_new_chat(None)
+                return True
+
+            # Ctrl+W - Toggle Web Search
+            elif keyval == Gdk.KEY_w:
+                self.chat_view.toggle_web_search()
+                return True
+
+            # Ctrl+, - Settings
+            elif keyval == Gdk.KEY_comma:
+                self.on_settings(None)
+                return True
+
+            # Ctrl+Q - Quit
+            elif keyval == Gdk.KEY_q:
+                self.close()
+                return True
+
+        return False  # Let other handlers process the key
 
     def set_app_controllers(self, app, app_state):
         """Set application and application state controllers"""
@@ -156,6 +194,19 @@ class MainWindow(Gtk.ApplicationWindow):
                 # Reload conversation list
                 conversations = self.app_state.get_all_conversations()
                 self.sidebar.populate_conversations(conversations)
+
+    def on_conversation_renamed(self, sidebar, conversation_id, new_title):
+        """Handle conversation rename"""
+        print(f"Renaming conversation {conversation_id} to: {new_title}")
+        if self.app_state:
+            success = self.app_state.rename_conversation(conversation_id, new_title)
+            if success:
+                # Reload conversation list to show updated title
+                conversations = self.app_state.get_all_conversations()
+                self.sidebar.populate_conversations(conversations)
+                # Keep the current conversation selected
+                if self.current_conversation_id:
+                    self.sidebar.set_active_conversation(self.current_conversation_id)
 
     def on_message_send(self, chat_view, message: str):
         """Handle message send"""

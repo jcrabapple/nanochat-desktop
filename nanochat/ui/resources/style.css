@@ -76,6 +76,10 @@ button.suggested-action:hover {
 .message-header {
 }
 
+.message-avatar {
+    font-size: 1.2em;
+}
+
 .message-role-label {
     font-size: 0.75em;
     font-weight: 600;
@@ -86,6 +90,54 @@ button.suggested-action:hover {
 }
 
 .message-row.user .message-role-label {
+}
+
+.message-timestamp {
+    font-size: 0.7em;
+    color: #606060;
+    opacity: 0.8;
+}
+
+/* Typing indicator */
+.typing-indicator {
+    padding: 12px 16px;
+    background-color: #2a2b2e;
+    border-radius: 18px;
+    margin: 8px 12px;
+    max-width: 200px;
+}
+
+.typing-dots {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+}
+
+.typing-dot {
+    width: 8px;
+    height: 8px;
+    background-color: #4a9eff;
+    border-radius: 50%;
+    animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes typing-bounce {
+    0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 .message-role {

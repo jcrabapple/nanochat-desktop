@@ -9,7 +9,8 @@ class Sidebar(Gtk.Box):
     __gsignals__ = {
         'new-chat': (GObject.SIGNAL_RUN_FIRST, None, ()),
         'conversation-selected': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
-        'conversation-deleted': (GObject.SIGNAL_RUN_FIRST, None, (object,))
+        'conversation-deleted': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        'conversation-renamed': (GObject.SIGNAL_RUN_FIRST, None, (object, str))
     }
 
     def __init__(self):
@@ -76,11 +77,16 @@ class Sidebar(Gtk.Box):
         for conv in conversations:
             row = ConversationRow(conv)
             row.connect('delete-requested', self.on_delete_requested)
+            row.connect('rename-requested', self.on_rename_requested)
             self.conversation_list.append(row)
 
     def on_delete_requested(self, row, conversation_id):
         """Handle delete request from conversation row"""
         self.emit('conversation-deleted', conversation_id)
+
+    def on_rename_requested(self, row, conversation_id, new_title):
+        """Handle rename request from conversation row"""
+        self.emit('conversation-renamed', conversation_id, new_title)
 
     def set_active_conversation(self, conversation_id: int):
         """Highlight active conversation"""
@@ -95,30 +101,33 @@ class ConversationRow(Gtk.ListBoxRow):
     """Single conversation row in sidebar"""
 
     __gsignals__ = {
-        'delete-requested': (GObject.SIGNAL_RUN_FIRST, None, (object,))
+        'delete-requested': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        'rename-requested': (GObject.SIGNAL_RUN_FIRST, None, (object, str))
     }
 
     def __init__(self, conversation: dict):
         super().__init__()
 
         self.conversation_id = conversation['id']
+        self.original_title = conversation['title']
+        self.is_editing = False
 
         # Main box
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        box.set_margin_start(12)
-        box.set_margin_end(12)
-        box.set_margin_top(8)
-        box.set_margin_bottom(8)
+        self.main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.main_box.set_margin_start(12)
+        self.main_box.set_margin_end(12)
+        self.main_box.set_margin_top(8)
+        self.main_box.set_margin_bottom(8)
 
         # Title and metadata
-        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
 
         # Title
-        title_label = Gtk.Label(label=conversation['title'])
-        title_label.set_halign(Gtk.Align.START)
-        title_label.set_ellipsize(True)  # Truncate with "..."
-        title_label.set_width_chars(25)
-        text_box.append(title_label)
+        self.title_label = Gtk.Label(label=conversation['title'])
+        self.title_label.set_halign(Gtk.Align.START)
+        self.title_label.set_ellipsize(True)  # Truncate with "..."
+        self.title_label.set_width_chars(25)
+        self.text_box.append(self.title_label)
 
         # Metadata (message count, time)
         metadata = f"{conversation.get('message_count', 0)} messages"
@@ -126,9 +135,9 @@ class ConversationRow(Gtk.ListBoxRow):
         meta_label.add_css_class("dim-label")
         meta_label.set_halign(Gtk.Align.START)
         meta_label.set_size_request(200, -1)
-        text_box.append(meta_label)
+        self.text_box.append(meta_label)
 
-        box.append(text_box)
+        self.main_box.append(self.text_box)
 
         # Delete button (trash icon, initially hidden)
         self.delete_button = Gtk.Button()
@@ -139,21 +148,122 @@ class ConversationRow(Gtk.ListBoxRow):
         self.delete_button.add_css_class("delete-button")
         self.delete_button.set_opacity(0)  # Hidden initially
         self.delete_button.connect("clicked", self.on_delete_clicked)
-        box.append(self.delete_button)
+        self.main_box.append(self.delete_button)
 
-        self.set_child(box)
+        self.set_child(self.main_box)
 
         # Add hover controller to the main box
         hover_controller = Gtk.EventControllerMotion()
         hover_controller.connect("enter", self.on_hover_enter)
         hover_controller.connect("leave", self.on_hover_leave)
-        box.add_controller(hover_controller)
+        self.main_box.add_controller(hover_controller)
+
+        # Add double-click controller for rename
+        click_controller = Gtk.GestureClick()
+        click_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        click_controller.connect("pressed", self.on_double_click)
+        self.main_box.add_controller(click_controller)
 
         # Add right-click controller
-        click_controller = Gtk.GestureClick()
-        click_controller.set_button(3)  # Right click
-        click_controller.connect("pressed", self.on_right_click)
-        box.add_controller(click_controller)
+        right_click_controller = Gtk.GestureClick()
+        right_click_controller.set_button(3)  # Right click
+        right_click_controller.connect("pressed", self.on_right_click)
+        self.main_box.add_controller(right_click_controller)
+
+    def on_double_click(self, gesture, n_press, x, y):
+        """Handle double-click to start editing"""
+        if n_press == 2:
+            self.start_rename()
+
+    def start_rename(self):
+        """Start inline editing of the title"""
+        if self.is_editing:
+            return
+
+        self.is_editing = True
+
+        # Create entry for editing
+        self.title_entry = Gtk.Entry()
+        self.title_entry.set_text(self.original_title)
+        self.title_entry.set_halign(Gtk.Align.START)
+        self.title_entry.set_width_chars(25)
+
+        # Replace label with entry
+        parent = self.title_label.get_parent()
+        parent.remove(self.title_label)
+        parent.prepend(self.title_entry)
+
+        # Connect signals
+        self.title_entry.connect("activate", self.on_rename_activate)
+        self.title_entry.connect("focus-out", self.on_rename_cancel)
+
+        # Add key controller for Escape
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self.on_rename_key_pressed)
+        self.title_entry.add_controller(key_controller)
+
+        # Focus and select all text
+        self.title_entry.grab_focus()
+        self.title_entry.set_position(-1)  # Move cursor to end
+        # We need to select all after the widget is realized
+        GLib.timeout_add(50, self._select_entry_text)
+
+    def _select_entry_text(self):
+        """Select all text in entry (called after widget is realized)"""
+        if self.title_entry and self.is_editing:
+            self.title_entry.grab_focus()
+            # Select all text
+            buffer = self.title_entry.get_buffer()
+            self.title_entry.select_region(0, -1)
+        return False  # Don't repeat
+
+    def on_rename_activate(self, entry):
+        """Handle Enter key in rename entry"""
+        new_title = entry.get_text().strip()
+        if new_title and new_title != self.original_title:
+            self.original_title = new_title
+            self.emit('rename-requested', self.conversation_id, new_title)
+        self.finish_rename()
+
+    def on_rename_cancel(self, entry, unknown):
+        """Handle focus-out (cancel edit)"""
+        # Cancel if empty or same as original
+        new_title = entry.get_text().strip()
+        if not new_title or new_title == self.original_title:
+            self.finish_rename()
+        else:
+            self.original_title = new_title
+            self.emit('rename-requested', self.conversation_id, new_title)
+            self.finish_rename()
+
+    def on_rename_key_pressed(self, controller, keyval, keycode, state):
+        """Handle key press in rename entry"""
+        if keyval == Gdk.KEY_Escape:
+            # Cancel without saving
+            self.finish_rename()
+            return True
+        return False
+
+    def finish_rename(self):
+        """Finish editing and restore label"""
+        if not self.is_editing:
+            return
+
+        self.is_editing = False
+
+        # Create new label with updated title
+        new_label = Gtk.Label(label=self.original_title)
+        new_label.set_halign(Gtk.Align.START)
+        new_label.set_ellipsize(True)
+        new_label.set_width_chars(25)
+
+        # Replace entry with label
+        parent = self.title_entry.get_parent()
+        parent.remove(self.title_entry)
+        parent.prepend(new_label)
+
+        self.title_label = new_label
+        self.title_entry = None
 
     def on_hover_enter(self, controller, x, y):
         """Show delete button on hover"""

@@ -108,6 +108,13 @@ class ApplicationState:
 
             return success
 
+    def rename_conversation(self, conversation_id: int, new_title: str) -> bool:
+        """Rename a conversation"""
+        with self.db.get_session() as session:
+            conv_repo = ConversationRepository(session)
+            conversation = conv_repo.update_conversation_title(conversation_id, new_title)
+            return conversation is not None
+
     async def send_message(self, message: str, use_web_search: bool = False):
         """
         Send message and get response
