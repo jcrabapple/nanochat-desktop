@@ -34,7 +34,7 @@ class ModeConfig:
 MODE_CONFIGS = {
     ConversationMode.STANDARD: ModeConfig(
         name="Standard",
-        icon="chat-bubble-text-symbolic",
+        icon="user-info-symbolic",
         system_prompt="",
         temperature=0.7,
         enable_web_search=False,
@@ -61,7 +61,7 @@ MODE_CONFIGS = {
 
     ConversationMode.CODE: ModeConfig(
         name="Code",
-        icon="utilities-terminal-symbolic",
+        icon="emblem-system-symbolic",
         system_prompt="You are a coding assistant. Provide clean, well-commented code following best practices. Explain your code clearly and suggest improvements when appropriate.",
         temperature=0.3,
         enable_web_search=False,
@@ -70,7 +70,7 @@ MODE_CONFIGS = {
 
     ConversationMode.LEARN: ModeConfig(
         name="Learn",
-        icon="library-symbolic",
+        icon="dialog-information-symbolic",
         system_prompt="You are an educational assistant. Explain concepts step by step, using examples and analogies. Check for understanding and offer to elaborate on complex topics.",
         temperature=0.6,
         enable_web_search=True,
