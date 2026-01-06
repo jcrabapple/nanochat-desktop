@@ -23,6 +23,8 @@ class NanoChatApplication(Gtk.Application):
         super().__init__(application_id='com.nanochat.desktop')
         self.app_state = None
         self.window = None
+        self.current_assistant_message = ""  # Accumulate streaming response
+        self.current_message_row = None  # Track the message row widget
 
     def do_activate(self):
         """Handle application activation"""
@@ -92,10 +94,25 @@ class NanoChatApplication(Gtk.Application):
     async def _send_message_task(self, message: str, use_web_search: bool):
         """Async task for sending messages"""
         try:
+            # Reset accumulated message
+            self.current_assistant_message = ""
+            first_chunk = True
+
             # Stream response
             async for role, content in self.app_state.send_message(message, use_web_search):
-                # Update UI on main thread
-                GLib.idle_add(self._update_chat_with_message, role, content)
+                if role == 'user':
+                    # User message - add immediately
+                    GLib.idle_add(self._update_chat_with_message, role, content, False)
+                elif role == 'assistant':
+                    # Assistant message - accumulate chunks
+                    self.current_assistant_message += content
+                    if first_chunk:
+                        # Create message row on first chunk
+                        GLib.idle_add(self._update_chat_with_message, role, self.current_assistant_message, False)
+                        first_chunk = False
+                    else:
+                        # Update existing message row
+                        GLib.idle_add(self._update_chat_with_message, role, self.current_assistant_message, True)
 
             # Reload conversations (updated timestamp)
             GLib.idle_add(self.load_conversations)
@@ -115,9 +132,9 @@ class NanoChatApplication(Gtk.Application):
             except Exception as cleanup_error:
                 logger.warning(f"Cleanup error: {cleanup_error}")
 
-    def _update_chat_with_message(self, role: str, content: str):
+    def _update_chat_with_message(self, role: str, content: str, update_last: bool = False):
         """Update chat view with message (called on main thread)"""
-        self.window.chat_view.add_message(role, content)
+        self.window.chat_view.add_message(role, content, update_last=update_last)
         return False  # Don't repeat
 
     def _show_error(self, error_message: str):

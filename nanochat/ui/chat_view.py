@@ -131,7 +131,7 @@ class ChatView(Gtk.Box):
         else:
             print("DEBUG: No text to send")
 
-    def add_message(self, role: str, content: str, timestamp: str = None):
+    def add_message(self, role: str, content: str, timestamp: str = None, update_last: bool = False):
         """
         Add a message to the chat view
 
@@ -139,14 +139,21 @@ class ChatView(Gtk.Box):
             role: 'user' or 'assistant'
             content: Message content
             timestamp: Optional timestamp string
+            update_last: If True, update the last assistant message instead of creating new one
         """
         # Hide welcome screen
         if self.welcome_screen.get_parent():
             self.messages_box.remove(self.welcome_screen)
 
-        # Create message row
-        message_row = MessageRow(role, content, timestamp)
-        self.messages_box.append(message_row)
+        if update_last:
+            # Update the last message row (for streaming responses)
+            last_child = self.messages_box.get_last_child()
+            if last_child and isinstance(last_child, MessageRow):
+                last_child.update_content(content)
+        else:
+            # Create new message row
+            message_row = MessageRow(role, content, timestamp)
+            self.messages_box.append(message_row)
 
         # Scroll to bottom
         GLib.timeout_add(100, self.scroll_to_bottom)
@@ -202,14 +209,19 @@ class MessageRow(Gtk.Box):
         self.append(header)
 
         # Content
-        content_label = Gtk.Label(label=content)
-        content_label.set_halign(Gtk.Align.START)
-        content_label.set_xalign(0)
-        content_label.set_wrap(True)
-        content_label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
-        content_label.set_selectable(True)
-        content_label.add_css_class("message-content")
-        self.append(content_label)
+        self.content_label = Gtk.Label(label=content)
+        self.content_label.set_halign(Gtk.Align.START)
+        self.content_label.set_xalign(0)
+        self.content_label.set_wrap(True)
+        self.content_label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        self.content_label.set_selectable(True)
+        self.content_label.add_css_class("message-content")
+        self.append(self.content_label)
+
+    def update_content(self, content: str):
+        """Update the message content (for streaming responses)"""
+        self.content = content
+        self.content_label.set_label(content)
 
     def create_header(self, timestamp: str = None) -> Gtk.Box:
         """Create message header with role and timestamp"""
