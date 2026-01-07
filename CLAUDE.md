@@ -9,13 +9,14 @@ NanoChat Desktop is a Linux desktop AI chat application built with Python and GT
 **Technology Stack:**
 - Python 3.11+
 - GTK4 with PyGObject bindings
-- SQLite (via SQLAlchemy)
+- SQLAlchemy (SQLite)
 - aiohttp for async HTTP
 - Markdown + Pygments for formatting
+- WebKit2 (optional, falls back to TextView)
 
 ## Building and Running
 
-### Installation (Development)
+### Development Installation
 
 ```bash
 # Create virtual environment
@@ -36,112 +37,216 @@ python -m nanochat.main
 **Flatpak (Recommended - Self-Contained):**
 ```bash
 ./build_flatpak.sh
-# Installs to: build/NanoChatDesktop-0.2.3-x86_64.flatpak
+# Output: build/NanoChatDesktop-{VERSION}-x86_64.flatpak
+# Bundles all dependencies including GTK4
 ```
 
 **AppImage:**
 ```bash
 ./build_appimage_proper.sh
+# Output: build/NanoChatDesktop-{VERSION}-x86_64.AppImage
 # Note: Requires GTK4 to be installed on target system
 ```
 
-Both build scripts are in the repository root and handle all necessary packaging steps.
+**Version bumps:** Update `VERSION` variable in both `build_appimage_proper.sh` and `build_flatpak.sh` before building releases.
+
+### Icon Management
+
+Application icons are stored in the repository root:
+- `icon.png` (1024x1024) - Source icon
+- `icon_{size}.png` - Pre-sized variants (256x256, 128x128, 64x64, 48x48, 32x32)
+
+Both AppImage and Flatpak build scripts handle icon installation automatically. The desktop file is `com.nanochat.desktop.desktop`.
 
 ## Architecture
 
-The application follows a clear MVC pattern:
+The application follows a clear MVC pattern with async/streaming support:
 
 ### Model Layer (`nanochat/api/` and `nanochat/data/`)
-- **`api/client.py`**: NanoGPT API client with streaming support
-- **`api/models.py`**: Request/response data models
-- **`data/`**: Database layer (currently minimal - SQLAlchemy referenced but not fully implemented)
+
+**API Client (`nanochat/api/client.py`)**
+- `NanoGPTClient`: Async client with streaming support
+- Endpoints: `/v1/chat/completions` (chat), `/web` (web search)
+- Returns async generators that yield `StreamChunk` objects
+- Handles retry logic and connection errors
+
+**Database (`nanochat/data/`)**
+- SQLAlchemy ORM with SQLite backend
+- `DatabaseManager`: Session management
+- `ConversationRepository`: CRUD for conversations
+- `MessageRepository`: CRUD for messages with web sources
+- Models: `Conversation`, `Message` (see `nanochat/data/models.py`)
+- Database location: `~/.local/share/nanochat/conversations.db`
 
 ### Controller Layer (`nanochat/state/`)
-- **`app_state.py`**: Main application controller, manages conversations and coordinates between UI and API
-- **`conversation_mode.py`**: Defines conversation modes (Standard, Create, Explore, Code, Learn)
+
+**`app_state.py`**: Main application controller
+- Coordinates between UI, API, and database
+- Manages conversation lifecycle
+- `send_message()`: Async generator that yields tuples of `(role, content, web_sources)`
+- Handles mode switching and web search preferences
+
+**`conversation_mode.py`**: Conversation mode system
+- `ConversationMode` enum: STANDARD, CREATE, EXPLORE, CODE, LEARN
+- `ModeConfig` dataclass: Defines prompts, temperature, web search behavior
+- `get_mode_config(mode)`: Retrieve configuration
 
 ### View Layer (`nanochat/ui/`)
-- **`main_window.py`**: Application shell, combines all components
-- **`header_bar.py`**: Top bar with settings button
-- **`sidebar.py`**: Conversation list with search and grouping
-- **`chat_view.py`**: Main chat area with message display and input
-- **`action_bar.py`**: Mode selection buttons (Create, Explore, Code, Learn)
-- **`settings_dialog.py`**: Configuration dialog for API settings
+
+**Component Structure:**
+- `main_window.py`: Application shell, assembles all components
+- `header_bar.py`: Top bar with settings button
+- `sidebar.py`: Conversation list with search/filter
+- `chat_view.py`: Main chat area with message display and input
+  - `MarkdownView`: WebView (WebKit2) or TextView fallback for markdown rendering
+  - `ActionBar`: Mode selection buttons
+- `settings_dialog.py`: Two-tab dialog (API Configuration | Modes)
+
+**CSS Styling:**
+- Located in `nanochat/ui/resources/style.css`
+- Loaded in `MainWindow.load_css()`
+- Components use `add_css_class()` to apply styles
+- Dark theme matching GTK4 aesthetic
 
 ### Configuration (`nanochat/config.py`)
-- Multi-source configuration (environment variables, config file, defaults)
-- Config location: `~/.config/nanochat/config.ini`
-- Data location: `~/.local/share/nanochat/`
+
+Multi-source configuration with priority:
+1. Environment variables (`NANOCHAT_API_KEY`, etc.)
+2. Config file (`~/.config/nanochat-desktop/.env`)
+3. Defaults
+
+Config file uses `.env` format (not INI despite old docs mentioning config.ini).
 
 ## Key Patterns
 
 ### Async/Threading Model
-GTK4 runs on the main thread, while API calls use async/await. Threading bridges these two worlds:
+
+GTK4 runs on the main thread. API calls use async/await with aiohttp. Bridge pattern:
+
 ```python
 # Run async operations in background thread
 threading.Thread(
     target=lambda: asyncio.run(self.send_message_async(text)),
     daemon=True
 ).start()
+
+# Update UI from background thread
+GLib.idle_add(lambda: self.update_ui(data))
 ```
 
-UI updates from background threads use `GLib.idle_add()`.
-
 ### Streaming Responses
-The API client supports streaming responses. Messages are yielded incrementally and the UI updates in real-time using generators.
+
+The API client returns async generators that yield `StreamChunk` objects. The `send_message()` method in `ApplicationState` is itself an async generator that yields `(role, content, web_sources)` tuples:
+
+```python
+async for chunk in api_client.send_message(...):
+    if chunk.content:
+        yield ('assistant', chunk.content, None)
+    if chunk.web_sources:
+        yield ('assistant', None, chunk.web_sources)
+```
 
 ### Conversation Modes
-Modes change system prompts, temperature, and web search behavior. The `ConversationMode` enum and `MODE_CONFIGS` dictionary define these behaviors.
 
-### CSS Styling
-Dark theme CSS is in `nanochat/ui/resources/style.css`. Components use `add_css_class()` to apply styles.
+Modes affect system prompts, temperature, and web search:
+- Configured in `MODE_CONFIGS` dictionary
+- Changed via `ActionBar` toggle buttons (mutually exclusive)
+- Current mode stored in `ApplicationState.current_conversation_mode`
+- UI shows temporary toast notification when mode changes
 
-## Common Development Tasks
+### Signal/Callback Pattern
 
-### Adding a New Conversation Mode
-1. Add enum to `nanochat/state/conversation_mode.py`
-2. Add `ModeConfig` to `MODE_CONFIGS` dictionary
-3. Update `action_bar.py` to include new button
-4. Add CSS styling if needed
+GTK4 uses signals for events. Components emit custom signals:
 
-### Modifying the UI
-GTK4 components are built programmatically (not with Glade). To modify a component:
-1. Read the relevant file in `nanochat/ui/`
-2. Modify the `_build_ui()` or `__init__()` method
-3. Test with `python -m nanochat.main`
+```python
+# Sidebar emits signals
+self.sidebar.connect('new-chat', self.on_new_chat)
+self.sidebar.connect('conversation-selected', self.on_conversation_selected)
 
-### Working with the API
-The `NanoGPTClient` in `nanochat/api/client.py` handles all API communication. It supports:
-- Standard chat endpoint
-- Web search endpoint
-- Streaming responses
-- Error handling with retry logic
+# Custom signals defined with GObject.register_signal()
+```
 
-## Current State
+### Web Search Integration
 
-### Implemented (Phase 1-2)
-- Core UI with GTK4
-- API integration with streaming
-- Configuration management
-- Action modes (Create, Explore, Code, Learn)
-- Basic conversation management
-- Settings dialog
+Web search is per-conversation (stored in `Conversation.web_search_enabled`):
+- Can be toggled via button in chat view
+- Some modes auto-enable web search (Explore, Learn)
+- Web sources stored as JSON in `Message.web_sources`
+- Displayed as clickable links below assistant messages
 
-### Not Yet Implemented
-- Database layer for message persistence (referenced but not implemented)
-- Rust modules for performance (fast search, markdown parsing) - see `nanochat_full_plan.md`
-- Advanced features from Phase 3 (projects, search, etc.) - see `PHASE3_PLAN.md`
+## Data Flow
 
-## Important Notes
+### Sending a Message
 
-- No test suite currently exists (pytest is configured but no tests written)
-- The application is Linux-only (GTK4 dependency)
-- Flatpak is the recommended distribution method (bundles GTK4)
-- AppImage bundles Python but requires system GTK4
-- Icon files are in the root `/icons/` directory and are packaged separately
+1. User types message and clicks Send (or Ctrl+Enter)
+2. `ChatView` emits signal → `MainWindow` handler
+3. `MainWindow` calls `ApplicationState.send_message()` in background thread
+4. `ApplicationState`:
+   - Saves user message to database
+   - Yields user message back to UI
+   - Calls `NanoGPTClient.send_message()` with conversation history
+   - Streams response chunks
+   - Each chunk yielded back to UI for display
+   - On `chunk.done`: saves assistant message with web sources to database
+5. UI updates in real-time as chunks arrive
 
-## Documentation Files
+### Loading Conversations
 
-- **README.md**: Installation and usage guide for end users
-- **nanochat_full_plan.md**: Complete development roadmap with architecture details
-- **PHASE3_PLAN.md**: Prioritized implementation plan for advanced features
+1. User clicks conversation in sidebar
+2. `Sidebar` emits `conversation-selected` signal
+3. `MainWindow` calls `ApplicationState.load_conversation()`
+4. `ApplicationState.get_conversation_messages()` retrieves from database
+5. `ChatView.clear_messages()` followed by `ChatView.add_message()` for each
+
+## Important Implementation Details
+
+### WebView vs TextView Fallback
+
+The `MarkdownView` widget attempts to use WebKit2 for rich markdown rendering. If WebKit2 is unavailable ( ImportError or ValueError), it falls back to a simple `Gtk.TextView` with plain text. Check `WEBKIT_AVAILABLE` constant before using WebKit features.
+
+### Guard Flags for Mutually Exclusive Buttons
+
+The `ActionBar` uses a `_updating_mode` guard flag to prevent recursive signal calls when programmatically deselecting toggle buttons:
+
+```python
+def _on_mode_toggled(self, button, mode):
+    if self._updating_mode:
+        return
+    self._updating_mode = True
+    # Deselect other buttons
+    for m, btn in self.mode_buttons.items():
+        if m != mode:
+            btn.set_active(False)
+    self._updating_mode = False
+```
+
+### Configuration Persistence
+
+Settings are saved to `~/.config/nanochat-desktop/.env` file. When settings change, the dialog directly calls `config.save_to_file()` and reinitializes the API client via `app_state.init_api_client()`.
+
+## Testing
+
+Currently no automated tests exist. Manual testing involves:
+1. Running `python -m nanochat.main`
+2. Testing with various API keys
+3. Verifying streaming responses
+4. Testing mode switching
+5. Checking web search functionality
+
+## Release Workflow
+
+1. Update version numbers in build scripts
+2. Commit changes
+3. Run `./build_appimage_proper.sh` and `./build_flatpak.sh`
+4. Create GitHub release via API (see `create_release.sh`)
+5. Upload AppImage and Flatpak assets
+6. Tag release with version number
+
+Release scripts use the GitHub API token stored in the script itself.
+
+## Common Issues
+
+- **WebKit2 import errors**: Not all systems have WebKit2 bindings. The app gracefully falls back to TextView.
+- **GTK4 version**: Requires GTK4 4.0+. Check with `gtk4-demo` or similar.
+- **Database locked errors**: SQLite uses WAL mode, but concurrent writes can still lock. Only one application instance should run at a time.
+- **Icon not showing**: Ensure icons exist in root directory and build scripts reference correct filenames.

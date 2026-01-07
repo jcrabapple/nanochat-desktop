@@ -5,8 +5,8 @@
 set -e
 
 REPO="jcrabapple/nanochat-desktop"
-VERSION="v0.2.1"
-APPIMAGE="build/NanoChatDesktop-0.2.1-x86_64.AppImage"
+VERSION="v0.3.0"
+APPIMAGE="build/NanoChatDesktop-0.3.0-x86_64.AppImage"
 
 echo "Creating GitHub release ${VERSION}..."
 
@@ -31,8 +31,8 @@ RELEASE_RESPONSE=$(curl -s -X POST \
     -d "{
         \"tag_name\": \"${VERSION}\",
         \"target_commitish\": \"main\",
-        \"name\": \"NanoChat Desktop 0.2.1\",
-        \"body\": \"Release 0.2.1 - Critical Bug Fixes\\n\\n**Bug Fixes:**\\n- ✅ Fixed CSS parser errors (removed unsupported GTK CSS properties)\\n- ✅ Fixed MessageDialog API for GTK4 compatibility\\n- ✅ Fixed database schema for new installations\\n\\n**Changes:**\\n- Removed invalid CSS properties (max-width, display, gap, keyframes)\\n- Updated MessageDialog to use proper GTK4 constructor\\n- AppImage now works without errors\\n\\n**Installation:**\\n1. Download NanoChatDesktop-0.2.1-x86_64.AppImage\\n2. chmod +x NanoChatDesktop-0.2.1-x86_64.AppImage\\n3. ./NanoChatDesktop-0.2.1-x86_64.AppImage\\n\\n**Requirements:**\\n- Linux x86_64\\n- GTK4 libraries\\n- Python 3.11+\\n- WebKit2GTK\",
+        \"name\": \"NanoChat Desktop 0.3.0 - Action Modes\",
+        \"body\": \"## Release 0.3.0 - Action Modes Feature\\n\\n### ✨ New Features\\n\\n**Action Buttons & Conversation Modes (Task 1.1)**\\n- ✅ Added 4 conversation modes: Create, Explore, Code, Learn\\n- ✅ Each mode has optimized prompts, temperature settings, and web search preferences\\n- ✅ Visual toggle buttons in the chat interface\\n- ✅ Mutually exclusive mode selection (only one active at a time)\\n- ✅ Click active button to return to Standard mode\\n- ✅ Visual indicator toast when switching modes\\n- ✅ Settings dialog now has two tabs: API Configuration and Modes\\n- ✅ Modes tab explains what each mode does\\n\\n### 🔧 Improvements\\n\\n**Mode Configurations:**\\n- Standard: Default conversation (temperature 0.7)\\n- Create: Content creation with higher creativity (0.8)\\n- Explore: Research mode with web search enabled (0.5)\\n- Code: Code generation with higher precision (0.3)\\n- Learn: Educational mode with detailed explanations (0.6, web search enabled)\\n\\n**Settings Dialog:**\\n- New tabbed interface (API Configuration | Modes)\\n- API Base URL is now read-only (NanoGPT API only)\\n- Comprehensive mode information with descriptions and shortcuts\\n- Keyboard shortcuts displayed (Ctrl+2 through Ctrl+5)\\n\\n### 🐛 Bug Fixes\\n\\n- Fixed mutually exclusive toggle behavior for action mode buttons\\n- Fixed mode button state management with guard flag to prevent recursive calls\\n- Added proper visual feedback for mode changes\\n\\n### 📦 Installation\\n\\n1. Download NanoChatDesktop-0.3.0-x86_64.AppImage\\n2. chmod +x NanoChatDesktop-0.3.0-x86_64.AppImage\\n3. ./NanoChatDesktop-0.3.0-x86_64.AppImage\\n\\n### 🔑 Requirements\\n\\n- Linux x86_64\\n- GTK4 libraries\\n- Python 3.11+\\n- WebKit2GTK\\n- NanoGPT API key\\n\\n### ⌨️ Keyboard Shortcuts\\n\\n- Ctrl+N - New chat\\n- Ctrl+W - Toggle web search\\n- Ctrl+, - Settings\\n- Ctrl+Q - Quit\\n- Ctrl+1 through Ctrl+5 - Mode selection\\n\\n### 📝 Notes\\n\\n- This release implements Phase 3, Task 1.1 from the roadmap\\n- AppImage requires GTK4 to be installed on the host system\\n- Web search auto-enables for Explore and Learn modes\\n- Click the currently active mode button to return to Standard mode\\n\\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\",
         \"draft\": false,
         \"prerelease\": false
     }")
