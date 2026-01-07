@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime
 from nanochat.data import DatabaseManager, ConversationRepository, MessageRepository
 from nanochat.api import NanoGPTClient
+from nanochat.api.model_cache import ModelCache
 from nanochat.config import config
 from nanochat.state.conversation_mode import ConversationMode, get_mode_config
 
@@ -23,6 +24,9 @@ class ApplicationState:
 
         # API client (will be initialized when API key is available)
         self.api_client: NanoGPTClient = None
+
+        # Model cache
+        self.model_cache = ModelCache()
 
         # Current conversation
         self.current_conversation_id = None
@@ -233,3 +237,43 @@ class ApplicationState:
         finally:
             # Ensure generator is closed to clean up resources
             await gen.aclose()
+
+    def get_cached_models(self):
+        """
+        Get cached models if available
+
+        Returns:
+            List of model IDs if cache is valid, None otherwise
+        """
+        return self.model_cache.get_cached_models()
+
+    def cache_models(self, models: list):
+        """
+        Save models to cache
+
+        Args:
+            models: List of model IDs to cache
+        """
+        self.model_cache.save_models(models)
+
+    async def fetch_models(self):
+        """
+        Fetch available models from API
+
+        Returns:
+            List of model IDs
+
+        Raises:
+            ValueError: If API client not initialized
+            Exception: If API request fails
+        """
+        if not self.api_client:
+            raise ValueError("API client not initialized")
+
+        models = await self.api_client.fetch_models()
+
+        # Cache the models
+        self.model_cache.save_models(models)
+
+        logger.info(f"Fetched and cached {len(models)} models")
+        return models

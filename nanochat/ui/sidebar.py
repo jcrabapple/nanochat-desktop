@@ -10,7 +10,8 @@ class Sidebar(Gtk.Box):
         'new-chat': (GObject.SIGNAL_RUN_FIRST, None, ()),
         'conversation-selected': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
         'conversation-deleted': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
-        'conversation-renamed': (GObject.SIGNAL_RUN_FIRST, None, (object, str))
+        'conversation-renamed': (GObject.SIGNAL_RUN_FIRST, None, (object, str)),
+        'settings-clicked': (GObject.SIGNAL_RUN_FIRST, None, ())
     }
 
     def __init__(self):
@@ -55,9 +56,40 @@ class Sidebar(Gtk.Box):
 
         self.append(self.scrolled)
 
+        # Separator before settings button
+        separator2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        separator2.set_margin_top(8)
+        separator2.set_margin_bottom(8)
+        self.append(separator2)
+
+        # Settings button at bottom
+        self.settings_button = Gtk.Button()
+        settings_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        settings_box.set_halign(Gtk.Align.CENTER)
+        settings_box.set_valign(Gtk.Align.CENTER)
+
+        settings_icon = Gtk.Image.new_from_icon_name("emblem-system-symbolic")
+        settings_icon.set_pixel_size(18)
+        settings_box.append(settings_icon)
+
+        settings_label = Gtk.Label(label="Settings")
+        settings_box.append(settings_label)
+
+        self.settings_button.set_child(settings_box)
+        self.settings_button.set_tooltip_text("Open Settings")
+        self.settings_button.set_margin_start(12)
+        self.settings_button.set_margin_end(12)
+        self.settings_button.set_margin_bottom(12)
+        self.settings_button.connect("clicked", self.on_settings_clicked)
+        self.append(self.settings_button)
+
         # Store conversation data
         self.conversations = []
         self.all_conversations = []  # Store unfiltered conversations
+
+    def on_settings_clicked(self, button):
+        """Handle settings button click"""
+        self.emit('settings-clicked')
 
     def on_new_chat(self, button):
         """Handle new chat button click"""

@@ -61,7 +61,6 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Header bar
         self.header_bar = HeaderBar()
-        self.header_bar.connect('settings-clicked', self.on_settings)
         self.set_titlebar(self.header_bar)
 
         # Sidebar
@@ -70,6 +69,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sidebar.connect('conversation-selected', self.on_conversation_selected)
         self.sidebar.connect('conversation-deleted', self.on_conversation_deleted)
         self.sidebar.connect('conversation-renamed', self.on_conversation_renamed)
+        self.sidebar.connect('settings-clicked', self.on_settings)
         main_box.append(self.sidebar)
 
         # Separator

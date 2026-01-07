@@ -75,13 +75,13 @@ class MigrationManager:
 
     def get_current_version(self) -> int:
         """Get current database version from metadata table"""
-        from sqlalchemy import inspect
+        from sqlalchemy import inspect, text
 
         inspector = inspect(self.db_manager.engine)
         if 'alembic_version' in inspector.get_table_names():
             # Using alembic-style version table
             with self.db_manager.get_session() as session:
-                result = session.execute("SELECT version_num FROM alembic_version LIMIT 1")
+                result = session.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
                 row = result.fetchone()
                 return row[0] if row else 0
         return 0

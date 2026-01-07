@@ -57,11 +57,24 @@ button.suggested-action:hover {
     border-radius: 18px;
 }
 
-/* User bubble (right side, blue) */
+/* User bubble (right side, darker blue for better readability) */
 .user-bubble {
-    background-color: #4a9eff;
+    background-color: #2a7aed;
     color: #ffffff;
     border-bottom-right-radius: 4px;  /* Visual indicator for message source */
+}
+
+/* Ensure user message labels have white text */
+.user-bubble label {
+    color: #ffffff;
+}
+
+.user .message-bubble label {
+    color: #ffffff;
+}
+
+.message-row.user label {
+    color: #ffffff;
 }
 
 /* Assistant bubble (left side, gray) */
@@ -74,10 +87,13 @@ button.suggested-action:hover {
 
 /* Message headers - show role labels */
 .message-header {
+    margin-bottom: 4px;
 }
 
 .message-avatar {
-    font-size: 1.2em;
+    font-size: 1.6em;
+    min-width: 32px;
+    min-height: 32px;
 }
 
 .message-role-label {
@@ -166,12 +182,16 @@ link:hover {
 }
 
 /* Input area */
+.input-container {
+    font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif;
+}
+
 .message-input {
     background-color: #2a2b2e;
     color: #e0e0e0;
     border-radius: 8px;
     padding: 12px;
-    min-height: 70px;  /* Start at ~2 lines tall */
+    min-height: 40px;
 }
 
 .message-input:focus {
@@ -268,6 +288,13 @@ button.flat:hover {
     margin-bottom: 24px;
 }
 
+.welcome-subtitle {
+    font-size: 1.2em;
+    font-weight: 400;
+    color: #4a9eff;
+    margin-bottom: 16px;
+}
+
 .pill {
     border-radius: 20px;
     padding: 12px 24px;
@@ -276,6 +303,17 @@ button.flat:hover {
 .suggested-prompt {
     border-radius: 8px;
     padding: 12px 16px;
+    background-color: #2a2b2e;
+    color: #e0e0e0;
+    border: 1px solid #3a3b3e;
+    font-size: 0.95em;
+    transition: all 200ms;
+}
+
+.suggested-prompt:hover {
+    background-color: #3a3b3e;
+    border-color: #4a9eff;
+    color: #ffffff;
 }
 
 /* Delete button in conversation rows */
@@ -379,6 +417,7 @@ button.floating-button {
     line-height: 1.5;
     padding: 12px 16px;
     border-radius: 18px;
+    font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif;
 }
 
 /* Action Mode Buttons */
@@ -402,6 +441,43 @@ button.floating-button {
     background-color: #4a9eff;
     color: #ffffff;
     border-color: #4a9eff;
+}
+
+/* Navigation buttons container */
+.navigation-buttons {
+    background-color: rgba(26, 27, 30, 0.9);
+    border-radius: 8px;
+    padding: 8px 4px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Individual navigation buttons */
+button.navigation-button {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 50%;  /* Make buttons round */
+    background-color: #2a2b2e;
+    color: #e0e0e0;
+    border: 1px solid #3a3b3e;
+    padding: 0;
+    transition: all 200ms;
+}
+
+/* Make icons smaller */
+button.navigation-button > * {
+    font-size: 14px;
+    padding: 0;
+}
+
+button.navigation-button:hover {
+    background-color: #3a3b3e;
+    border-color: #4a9eff;
+    color: #ffffff;
+}
+
+button.navigation-button:active {
+    background-color: #4a9eff;
+    color: #ffffff;
 }
 
 /* Mode indicator toast */

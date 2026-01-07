@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 from nanochat.api.exceptions import *
 from nanochat.api.models import ChatRequest, ChatResponse, StreamChunk, Message
+from nanochat.constants import DEFAULT_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class NanoGPTClient:
         use_web_search: bool = False,
         stream: bool = True,
         temperature: float = 0.7,
-        max_tokens: int = 2000
+        max_tokens: int = DEFAULT_MAX_TOKENS
     ):
         """
         Send message to API and stream response
@@ -300,6 +301,62 @@ class NanoGPTClient:
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse SSE data: {data_str}, error: {e}")
                     continue
+
+    async def fetch_models(self) -> list:
+        """
+        Fetch available models from the API
+
+        Returns:
+            List of model IDs (strings)
+
+        Raises:
+            AuthenticationError: If API key is invalid
+            APIError: If request fails
+        """
+        models_endpoint = f"{self.base_url}/v1/models"
+
+        logger.info(f"Fetching available models from {models_endpoint}")
+
+        session = aiohttp.ClientSession(timeout=self.timeout)
+        try:
+            async with session.get(
+                models_endpoint,
+                headers=self._get_headers()
+            ) as response:
+                # Handle errors
+                if response.status == 401:
+                    raise AuthenticationError("Invalid API key")
+                elif response.status == 429:
+                    raise RateLimitError("Rate limit exceeded")
+                elif response.status != 200:
+                    error_text = await response.text()
+                    raise APIError(
+                        f"API returned {response.status}: {error_text}",
+                        status_code=response.status
+                    )
+
+                # Parse response
+                try:
+                    data = await response.json()
+                except Exception as e:
+                    raise APIError(f"Failed to parse models response: {str(e)}")
+
+                # Extract model IDs from response
+                # OpenAI-compatible format: {"data": [{"id": "model1"}, ...]}
+                if 'data' in data and isinstance(data['data'], list):
+                    models = [model['id'] for model in data['data'] if 'id' in model]
+                    logger.info(f"Successfully fetched {len(models)} models")
+                    return models
+                else:
+                    logger.warning("Unexpected models response format")
+                    return []
+
+        except asyncio.TimeoutError:
+            raise TimeoutError("Request timed out")
+        except aiohttp.ClientError as e:
+            raise ConnectionError(f"Connection error: {str(e)}")
+        finally:
+            await session.close()
 
     async def test_connection(self) -> bool:
         """Test if API key is valid by making a simple request"""

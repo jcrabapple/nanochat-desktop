@@ -55,6 +55,9 @@ class NanoChatApplication(Gtk.Application):
                 # Initialize API client
                 self.app_state.init_api_client()
 
+                # Fetch models on startup (in background)
+                self._fetch_models_on_startup()
+
                 # Load conversations
                 self.load_conversations()
 
@@ -74,6 +77,34 @@ class NanoChatApplication(Gtk.Application):
             logger.info(f"Loaded {len(conversations)} conversations")
         except Exception as e:
             logger.error(f"Failed to load conversations: {e}")
+
+    def _fetch_models_on_startup(self):
+        """Fetch models on startup if cache is empty"""
+        # Check if we have cached models
+        cached_models = self.app_state.get_cached_models()
+
+        if cached_models:
+            logger.info(f"Using {len(cached_models)} cached models")
+            return
+
+        # No cache, fetch in background
+        logger.info("No model cache found, fetching from API...")
+
+        def fetch_models_thread():
+            """Run model fetching in background thread"""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                models = loop.run_until_complete(self.app_state.fetch_models())
+                logger.info(f"Successfully fetched and cached {len(models)} models")
+            except Exception as e:
+                logger.warning(f"Failed to fetch models on startup: {e}")
+            finally:
+                loop.close()
+
+        # Start background thread
+        thread = threading.Thread(target=fetch_models_thread, daemon=True)
+        thread.start()
 
     def send_message_async(self, message: str, use_web_search: bool = False):
         """Send message asynchronously (run from UI thread)"""
@@ -106,9 +137,6 @@ class NanoChatApplication(Gtk.Application):
         self.current_web_sources = None
         first_chunk = True
 
-        # Show typing indicator
-        GLib.idle_add(self.window.chat_view.show_typing_indicator)
-
         # Create generator and ensure it's properly closed
         gen = self.app_state.send_message(message, use_web_search)
 
@@ -118,6 +146,9 @@ class NanoChatApplication(Gtk.Application):
                 if role == 'user':
                     # User message - add immediately
                     GLib.idle_add(self._update_chat_with_message, role, content, None, False)
+
+                    # Show typing indicator AFTER user message is added
+                    GLib.idle_add(self.window.chat_view.show_typing_indicator)
                 elif role == 'assistant':
                     # Hide typing indicator on first assistant chunk
                     if first_chunk:

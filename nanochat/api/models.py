@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
+from nanochat.constants import DEFAULT_MAX_TOKENS
 
 
 @dataclass
@@ -19,7 +20,7 @@ class ChatRequest:
     messages: List[Message]
     stream: bool = True
     temperature: float = 0.7
-    max_tokens: int = 2000
+    max_tokens: int = DEFAULT_MAX_TOKENS
     web_search: bool = False
 
     def to_payload(self) -> Dict[str, Any]:

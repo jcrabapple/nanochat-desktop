@@ -1,6 +1,11 @@
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk
+from gi.repository import Gtk, GLib, Gdk
+import asyncio
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -9,12 +14,20 @@ class SettingsDialog(Gtk.Dialog):
     def __init__(self, parent, current_api_key: str = "", current_base_url: str = "", current_model: str = ""):
         super().__init__(title="Settings")
 
-        self.set_default_size(500, 400)
+        self.set_default_size(500, 450)
         self.set_modal(True)
         self.set_transient_for(parent)
 
         # Store parent reference for callbacks
         self.parent_window = parent
+
+        # Model list state
+        self.available_models = []
+        self.selected_model = current_model or "gpt-4"
+        self.is_fetching_models = False
+
+        # Get app state for model fetching
+        self.app_state = getattr(parent, 'app_state', None)
 
         # Main content
         content = self.get_content_area()
@@ -95,14 +108,40 @@ class SettingsDialog(Gtk.Dialog):
         self.base_url_entry.set_editable(False)  # Make read-only (NanoGPT API only)
         api_key_box.append(self.base_url_entry)
 
-        # Model input
+        # Model selection with dropdown
         model_label = Gtk.Label(label="Model:")
         model_label.set_halign(Gtk.Align.START)
         api_key_box.append(model_label)
 
-        self.model_entry = Gtk.Entry()
-        self.model_entry.set_text(current_model or "gpt-4")
-        api_key_box.append(self.model_entry)
+        # Model dropdown container
+        model_container = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        # Model dropdown
+        self.model_dropdown = Gtk.ComboBoxText()
+        self.model_dropdown.set_hexpand(True)
+        self.model_dropdown.connect("changed", self.on_model_changed)
+        model_container.append(self.model_dropdown)
+
+        # Refresh button
+        self.refresh_button = Gtk.Button()
+        refresh_icon = Gtk.Image.new_from_icon_name("view-refresh-symbolic")
+        refresh_icon.set_pixel_size(16)
+        self.refresh_button.set_child(refresh_icon)
+        self.refresh_button.set_tooltip_text("Refresh model list")
+        self.refresh_button.connect("clicked", self.on_refresh_models)
+        model_container.append(self.refresh_button)
+
+        api_key_box.append(model_container)
+
+        # Model status label
+        self.model_status_label = Gtk.Label()
+        self.model_status_label.add_css_class("dim-label")
+        self.model_status_label.set_halign(Gtk.Align.START)
+        self.model_status_label.set_wrap(True)
+        api_key_box.append(self.model_status_label)
+
+        # Load models after UI is shown
+        self.connect("show", self.on_dialog_show)
 
         # Instructions
         info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -265,8 +304,126 @@ class SettingsDialog(Gtk.Dialog):
 
     def get_values(self):
         """Get form values"""
+        selected_model = self.model_dropdown.get_active_text()
+        # If dropdown is empty, fall back to current model
+        if not selected_model:
+            selected_model = self.selected_model
+
         return {
             'api_key': self.api_key_entry.get_text(),
             'api_base_url': self.base_url_entry.get_text(),
-            'model': self.model_entry.get_text()
+            'model': selected_model
         }
+
+    def on_dialog_show(self, dialog):
+        """Handle dialog show event - load models"""
+        # Load initial models from cache or set default
+        self._load_models_from_cache_or_default()
+
+    def _load_models_from_cache_or_default(self):
+        """Load models from cache or set default model"""
+        if self.app_state:
+            # Try to get cached models
+            cached_models = self.app_state.get_cached_models()
+            if cached_models:
+                self.available_models = cached_models
+                self._populate_model_dropdown()
+                self.model_status_label.set_text(f"Loaded {len(cached_models)} models from cache")
+            else:
+                # Set default model
+                self.available_models = [self.selected_model]
+                self._populate_model_dropdown()
+                self.model_status_label.set_text("Using default model. Click refresh to fetch available models.")
+
+                # Auto-fetch models in background
+                GLib.timeout_add(500, self._auto_fetch_models)
+        else:
+            # No app state, just use current model
+            self.available_models = [self.selected_model]
+            self._populate_model_dropdown()
+            self.model_status_label.set_text("Model list not available (no connection)")
+
+    def _auto_fetch_models(self):
+        """Auto-fetch models when dialog opens"""
+        if not self.is_fetching_models:
+            self._fetch_models_async()
+        return False  # Don't repeat
+
+    def on_model_changed(self, dropdown):
+        """Handle model dropdown change"""
+        model_id = dropdown.get_active_text()
+        if model_id:
+            self.selected_model = model_id
+            logger.debug(f"Model selected: {model_id}")
+
+    def on_refresh_models(self, button):
+        """Handle refresh button click"""
+        if self.is_fetching_models:
+            logger.debug("Already fetching models")
+            return
+
+        self._fetch_models_async()
+
+    def _fetch_models_async(self):
+        """Fetch models from API asynchronously"""
+        if not self.app_state or not self.app_state.api_client:
+            self.model_status_label.set_text("Cannot fetch models: API not configured")
+            return
+
+        self.is_fetching_models = True
+        self.refresh_button.set_sensitive(False)
+        self.model_status_label.set_text("Fetching models from API...")
+
+        # Use GLib idle to run async task
+        def fetch_task():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                models = loop.run_until_complete(self.app_state.fetch_models())
+                GLib.idle_add(lambda: self._on_models_fetched(models, None))
+            except Exception as e:
+                GLib.idle_add(lambda: self._on_models_fetched(None, e))
+            finally:
+                loop.close()
+
+        # Run in thread to avoid blocking UI
+        import threading
+        thread = threading.Thread(target=fetch_task, daemon=True)
+        thread.start()
+
+    def _on_models_fetched(self, models: Optional[list], error: Optional[Exception]):
+        """Handle models fetched callback"""
+        self.is_fetching_models = False
+        self.refresh_button.set_sensitive(True)
+
+        if error:
+            logger.error(f"Failed to fetch models: {error}")
+            self.model_status_label.set_text(f"Failed to fetch models: {str(error)}")
+            return
+
+        if models:
+            self.available_models = models
+            self._populate_model_dropdown()
+            self.model_status_label.set_text(f"Loaded {len(models)} models from API")
+
+            # Cache the models
+            if self.app_state:
+                self.app_state.cache_models(models)
+        else:
+            self.model_status_label.set_text("No models found")
+
+    def _populate_model_dropdown(self):
+        """Populate the model dropdown with available models"""
+        self.model_dropdown.remove_all()
+
+        for model in self.available_models:
+            self.model_dropdown.append_text(model)
+
+        # Select the current model
+        if self.selected_model in self.available_models:
+            index = self.available_models.index(self.selected_model)
+            self.model_dropdown.set_active(index)
+        elif self.available_models:
+            # Select first model if current not found
+            self.model_dropdown.set_active(0)
+            self.selected_model = self.available_models[0]
