@@ -26,6 +26,14 @@ class NanoChatApplication(Gtk.Application):
         self.current_assistant_message = ""  # Accumulate streaming response
         self.current_message_row = None  # Track the message row widget
 
+        # Force dark theme
+        self._setup_dark_theme()
+
+    def _setup_dark_theme(self):
+        """Configure application to use dark theme"""
+        # Set prefer-dark-theme for this application
+        Gtk.Settings.get_default().set_property('gtk-application-prefer-dark-theme', True)
+
     def do_activate(self):
         """Handle application activation"""
         if not self.window:
