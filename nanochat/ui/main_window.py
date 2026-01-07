@@ -6,6 +6,7 @@ from nanochat.ui.header_bar import HeaderBar
 from nanochat.ui.sidebar import Sidebar
 from nanochat.ui.chat_view import ChatView
 from nanochat.ui.settings_dialog import SettingsDialog
+from nanochat.ui.project_dialog import ProjectDialog, MoveToProjectDialog
 
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -69,6 +70,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sidebar.connect('conversation-selected', self.on_conversation_selected)
         self.sidebar.connect('conversation-deleted', self.on_conversation_deleted)
         self.sidebar.connect('conversation-renamed', self.on_conversation_renamed)
+        self.sidebar.connect('conversation-move-to-project', self.on_move_to_project)
+        self.sidebar.connect('project-created', self.on_create_project)
+        self.sidebar.connect('project-selected', self.on_project_selected)
+        self.sidebar.connect('project-deleted', self.on_project_deleted)
         self.sidebar.connect('settings-clicked', self.on_settings)
         main_box.append(self.sidebar)
 
@@ -137,7 +142,8 @@ class MainWindow(Gtk.ApplicationWindow):
             parent=self,
             current_api_key=config.api_key,
             current_base_url=config.api_base_url,
-            current_model=config.model
+            current_model=config.model,
+            current_title_model=config.title_model
         )
 
         print("DEBUG: Presenting settings dialog (GTK4 API)")
@@ -170,9 +176,8 @@ class MainWindow(Gtk.ApplicationWindow):
             new_id = self.app_state.create_conversation()
             self.current_conversation_id = new_id
 
-            # Reload sidebar to show new conversation
-            conversations = self.app_state.get_all_conversations()
-            self.sidebar.populate_conversations(conversations)
+            # Reload sidebar to show new conversation and update counts
+            self.refresh_projects_and_conversations()
             self.sidebar.set_active_conversation(new_id)
 
             # Reset web search to default (disabled) for new chat
@@ -209,13 +214,13 @@ class MainWindow(Gtk.ApplicationWindow):
         if self.app_state:
             success = self.app_state.delete_conversation(conversation_id)
             if success:
-                # Clear chat view if deleted conversation was current
+                # Delete successful
                 if self.current_conversation_id == conversation_id:
                     self.current_conversation_id = None
                     self.chat_view.show_welcome()
-                # Reload conversation list
-                conversations = self.app_state.get_all_conversations()
-                self.sidebar.populate_conversations(conversations)
+                
+                # Refresh entire sidebar to update conversation list AND project counts
+                self.refresh_projects_and_conversations()
 
     def on_conversation_renamed(self, sidebar, conversation_id, new_title):
         """Handle conversation rename"""
@@ -242,3 +247,86 @@ class MainWindow(Gtk.ApplicationWindow):
             )
         else:
             print("DEBUG: No app controller available")
+
+    # ==================== Project Management ====================
+
+    def refresh_projects_and_conversations(self):
+        """Refresh both projects and conversations in sidebar"""
+        if self.app_state:
+            # Load conversations first so project counts are correct
+            conversations = self.app_state.get_all_conversations()
+            self.sidebar.populate_conversations(conversations)
+            # Then load projects
+            projects = self.app_state.get_all_projects()
+            self.sidebar.populate_projects(projects)
+
+    def on_create_project(self, sidebar):
+        """Handle create project button click"""
+        dialog = ProjectDialog(parent=self)
+
+        def on_response(dialog, response_id):
+            if response_id == Gtk.ResponseType.OK:
+                project_data = dialog.get_project_data()
+                if self.app_state and project_data['name']:
+                    try:
+                        self.app_state.create_project(
+                            name=project_data['name'],
+                            color=project_data['color'],
+                            description=project_data['description']
+                        )
+                        self.refresh_projects_and_conversations()
+                    except Exception as e:
+                        print(f"Error creating project: {e}")
+            dialog.destroy()
+
+        dialog.connect('response', on_response)
+        dialog.present()
+
+    def on_project_selected(self, sidebar, project_id):
+        """Handle project selection for filtering"""
+        print(f"Filtering by project: {project_id}")
+        self.sidebar.filter_by_project(project_id)
+
+    def on_project_deleted(self, sidebar, project_id):
+        """Handle project deletion"""
+        print(f"Deleting project: {project_id}")
+        if self.app_state:
+            success = self.app_state.delete_project(project_id)
+            if success:
+                self.refresh_projects_and_conversations()
+
+    def on_move_to_project(self, sidebar, conversation_id):
+        """Handle move conversation to project"""
+        if not self.app_state:
+            return
+
+        # Get current project for the conversation
+        conversations = self.app_state.get_all_conversations()
+        current_project_id = None
+        for conv in conversations:
+            if conv['id'] == conversation_id:
+                current_project_id = conv.get('project_id')
+                break
+
+        # Get all projects
+        projects = self.app_state.get_all_projects()
+
+        dialog = MoveToProjectDialog(
+            parent=self,
+            projects=projects,
+            current_project_id=current_project_id
+        )
+
+        def on_response(dialog, response_id):
+            if response_id == Gtk.ResponseType.OK:
+                new_project_id = dialog.get_selected_project_id()
+                if self.app_state:
+                    self.app_state.move_conversation_to_project(
+                        conversation_id,
+                        new_project_id
+                    )
+                    self.refresh_projects_and_conversations()
+            dialog.destroy()
+
+        dialog.connect('response', on_response)
+        dialog.present()

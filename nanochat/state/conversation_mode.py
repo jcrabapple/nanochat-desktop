@@ -34,7 +34,7 @@ class ModeConfig:
 MODE_CONFIGS = {
     ConversationMode.STANDARD: ModeConfig(
         name="Standard",
-        icon="user-info-symbolic",
+        icon="avatar-default-symbolic",
         system_prompt="",
         temperature=0.7,
         enable_web_search=False,

@@ -58,6 +58,51 @@ class Migration_v1(Migration):
         Base.metadata.drop_all(bind=engine)
 
 
+class Migration_v2(Migration):
+    """Add projects table and project_id to conversations"""
+
+    def __init__(self):
+        super().__init__(2, "Add projects table for conversation organization")
+
+    def up(self, engine):
+        """Create projects table and add project_id to conversations"""
+        from sqlalchemy import text
+
+        with engine.connect() as conn:
+            # Create projects table
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    color VARCHAR(7) DEFAULT '#4a9eff',
+                    description TEXT,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    order_index INTEGER NOT NULL DEFAULT 0
+                )
+            """))
+
+            # Add project_id column to conversations if it doesn't exist
+            # SQLite doesn't have IF NOT EXISTS for ADD COLUMN, so we check first
+            result = conn.execute(text("PRAGMA table_info(conversations)"))
+            columns = [row[1] for row in result]
+            if 'project_id' not in columns:
+                conn.execute(text("""
+                    ALTER TABLE conversations ADD COLUMN project_id INTEGER REFERENCES projects(id)
+                """))
+
+            conn.commit()
+
+    def down(self, engine):
+        """Drop projects table"""
+        from sqlalchemy import text
+
+        with engine.connect() as conn:
+            # Note: SQLite doesn't support DROP COLUMN, so we can't remove project_id
+            conn.execute(text("DROP TABLE IF EXISTS projects"))
+            conn.commit()
+
+
 class MigrationManager:
     """Database migration manager"""
 
@@ -70,7 +115,8 @@ class MigrationManager:
         """
         self.db_manager = db_manager
         self.migrations = {
-            1: Migration_v1()
+            1: Migration_v1(),
+            2: Migration_v2()
         }
 
     def get_current_version(self) -> int:
@@ -143,6 +189,25 @@ class MigrationManager:
 
 # ==================== ORM Models ====================
 
+class Project(Base):
+    """Project model for organizing conversations into folders"""
+    __tablename__ = 'projects'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True)
+    color = Column(String(7), default='#4a9eff')  # Hex color
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    order_index = Column(Integer, default=0, nullable=False)
+
+    # Relationship to conversations
+    conversations = relationship("Conversation", back_populates="project")
+
+    def __repr__(self):
+        return f"<Project(id={self.id}, name='{self.name}')>"
+
+
 class Conversation(Base):
     """Conversation model"""
     __tablename__ = 'conversations'
@@ -152,6 +217,12 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     web_search_enabled = Column(Boolean, default=False, nullable=False)
+
+    # Project foreign key (nullable - conversations can be unorganized)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+
+    # Relationship to project
+    project = relationship("Project", back_populates="conversations")
 
     # Relationship to messages
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", lazy='select')
@@ -523,3 +594,159 @@ class MessageRepository:
         return self.session.query(Message)\
             .filter_by(conversation_id=conversation_id)\
             .count()
+
+
+class ProjectRepository:
+    """Repository for project CRUD operations"""
+
+    def __init__(self, session: Session):
+        """
+        Initialize repository with a session
+
+        Args:
+            session: SQLAlchemy session
+        """
+        self.session = session
+
+    def create_project(
+        self,
+        name: str,
+        color: str = '#4a9eff',
+        description: str = None
+    ) -> Project:
+        """
+        Create a new project
+
+        Args:
+            name: Project name (must be unique)
+            color: Hex color code for the project
+            description: Optional project description
+
+        Returns:
+            Created Project object
+        """
+        # Get the next order index
+        max_order = self.session.query(Project).count()
+
+        project = Project(
+            name=name,
+            color=color,
+            description=description,
+            order_index=max_order
+        )
+        self.session.add(project)
+        self.session.flush()
+        logger.info(f"Created project: {project.id} - {project.name}")
+        return project
+
+    def get_project(self, project_id: int) -> Optional[Project]:
+        """Get project by ID"""
+        return self.session.query(Project).filter_by(id=project_id).first()
+
+    def get_project_by_name(self, name: str) -> Optional[Project]:
+        """Get project by name"""
+        return self.session.query(Project).filter_by(name=name).first()
+
+    def get_all_projects(self) -> List[Project]:
+        """Get all projects ordered by order_index"""
+        return self.session.query(Project).order_by(Project.order_index).all()
+
+    def update_project(
+        self,
+        project_id: int,
+        name: str = None,
+        color: str = None,
+        description: str = None
+    ) -> Optional[Project]:
+        """
+        Update project attributes
+
+        Args:
+            project_id: Project ID
+            name: New name (optional)
+            color: New color (optional)
+            description: New description (optional)
+
+        Returns:
+            Updated Project object or None if not found
+        """
+        project = self.get_project(project_id)
+        if project:
+            if name is not None:
+                project.name = name
+            if color is not None:
+                project.color = color
+            if description is not None:
+                project.description = description
+            project.updated_at = datetime.utcnow()
+            self.session.flush()
+            logger.info(f"Updated project {project_id}")
+        return project
+
+    def delete_project(self, project_id: int) -> bool:
+        """
+        Delete a project (conversations are moved to 'No Project')
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            True if deleted, False if not found
+        """
+        project = self.get_project(project_id)
+        if project:
+            # Unassign conversations from this project
+            for conversation in project.conversations:
+                conversation.project_id = None
+            self.session.delete(project)
+            self.session.flush()
+            logger.info(f"Deleted project {project_id}")
+            return True
+        return False
+
+    def assign_conversation_to_project(
+        self,
+        conversation_id: int,
+        project_id: int = None
+    ) -> bool:
+        """
+        Assign a conversation to a project (or None to unassign)
+
+        Args:
+            conversation_id: Conversation ID
+            project_id: Project ID (None to unassign)
+
+        Returns:
+            True if successful, False if conversation not found
+        """
+        conversation = self.session.query(Conversation).filter_by(
+            id=conversation_id
+        ).first()
+        if conversation:
+            conversation.project_id = project_id
+            conversation.updated_at = datetime.utcnow()
+            self.session.flush()
+            logger.info(f"Assigned conversation {conversation_id} to project {project_id}")
+            return True
+        return False
+
+    def get_conversations_by_project(
+        self,
+        project_id: int = None,
+        limit: int = 100
+    ) -> List[Conversation]:
+        """
+        Get conversations for a specific project (None for unorganized)
+
+        Args:
+            project_id: Project ID (None for unorganized conversations)
+            limit: Maximum number of conversations to return
+
+        Returns:
+            List of Conversation objects
+        """
+        return self.session.query(Conversation)\
+            .filter_by(project_id=project_id)\
+            .order_by(Conversation.updated_at.desc())\
+            .limit(limit)\
+            .all()

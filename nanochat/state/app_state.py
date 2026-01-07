@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from datetime import datetime
-from nanochat.data import DatabaseManager, ConversationRepository, MessageRepository
+from nanochat.data import DatabaseManager, ConversationRepository, MessageRepository, ProjectRepository
 from nanochat.api import NanoGPTClient
 from nanochat.api.model_cache import ModelCache
 from nanochat.config import config
@@ -100,7 +100,8 @@ class ApplicationState:
                     'title': conv.title,
                     'updated_at': conv.updated_at.isoformat(),
                     'message_count': len(conv.messages),
-                    'web_search_enabled': getattr(conv, 'web_search_enabled', False)
+                    'web_search_enabled': getattr(conv, 'web_search_enabled', False),
+                    'project_id': getattr(conv, 'project_id', None)
                 }
                 for conv in conversations
             ]
@@ -124,6 +125,95 @@ class ApplicationState:
             conversation = conv_repo.update_conversation_title(conversation_id, new_title)
             return conversation is not None
 
+    async def generate_conversation_title(self, conversation_id: int) -> str:
+        """
+        Generate a title for a conversation using the AI.
+
+        Args:
+            conversation_id: ID of the conversation to title
+
+        Returns:
+            Generated title string, or None if generation failed
+        """
+        if not self.api_client:
+            logger.warning("Cannot generate title: API client not initialized")
+            return None
+
+        # Get conversation messages
+        messages = self.get_conversation_messages(conversation_id)
+        if len(messages) < 2:
+            logger.info("Not enough messages to generate title")
+            return None
+
+        # Get first user message and first assistant response
+        user_msg = None
+        assistant_msg = None
+        for msg in messages:
+            if msg['role'] == 'user' and not user_msg:
+                user_msg = msg['content'][:500]  # Limit length
+            elif msg['role'] == 'assistant' and not assistant_msg:
+                assistant_msg = msg['content'][:500]  # Limit length
+            if user_msg and assistant_msg:
+                break
+
+        if not user_msg or not assistant_msg:
+            return None
+
+        # Create prompt for title generation
+        title_prompt = f"""Based on this conversation, generate a very short title (3-6 words max). 
+Only respond with the title itself, no quotes or explanation.
+
+User: {user_msg}
+Assistant: {assistant_msg}"""
+
+        gen = None
+        try:
+            # Use API client to generate title (non-streaming for reliability)
+            title = ""
+            logger.info(f"Starting title generation for conversation {conversation_id}")
+            gen = self.api_client.send_message(
+                message=title_prompt,
+                conversation_history=[],
+                use_web_search=False,
+                stream=False,  # Non-streaming for simpler, more reliable response
+                temperature=0.7,
+                max_tokens=150,  # Increased for models that use reasoning tokens
+                model=config.title_model
+            )
+            chunk_count = 0
+            async for chunk in gen:
+                chunk_count += 1
+                if chunk.content:
+                    title += chunk.content
+                if chunk.done:
+                    break
+
+            # Clean up the title
+            title = title.strip().strip('"\'')
+            if len(title) > 100:
+                title = title[:100]
+
+            # Save the title
+            if title:
+                self.rename_conversation(conversation_id, title)
+                logger.info(f"Generated title for conversation {conversation_id}: {title}")
+                return title
+            else:
+                logger.warning("Title generation returned empty title")
+
+        except Exception as e:
+            logger.error(f"Failed to generate title: {e}", exc_info=True)
+            return None
+        finally:
+            # Ensure generator is properly closed
+            if gen is not None:
+                try:
+                    await gen.aclose()
+                except Exception as close_error:
+                    logger.debug(f"Error closing generator: {close_error}")
+
+        return None
+
     def set_web_search_enabled(self, conversation_id: int, enabled: bool) -> bool:
         """Set web search preference for a conversation"""
         with self.db.get_session() as session:
@@ -140,8 +230,6 @@ class ApplicationState:
         """
         self.current_conversation_mode = mode
         logger.info(f"Conversation mode set to {mode.value}")
-
-        # Optionally save mode to preferences here for persistence
 
     def get_conversation_mode(self) -> ConversationMode:
         """Get current conversation mode"""
@@ -277,3 +365,133 @@ class ApplicationState:
 
         logger.info(f"Fetched and cached {len(models)} models")
         return models
+
+    # ==================== Project Management ====================
+
+    def create_project(self, name: str, color: str = '#4a9eff', description: str = None) -> dict:
+        """
+        Create a new project.
+
+        Args:
+            name: Project name (must be unique)
+            color: Hex color code
+            description: Optional description
+
+        Returns:
+            Dict with project data
+        """
+        with self.db.get_session() as session:
+            proj_repo = ProjectRepository(session)
+            project = proj_repo.create_project(
+                name=name,
+                color=color,
+                description=description
+            )
+            logger.info(f"Created project {project.id}: {name}")
+            return {
+                'id': project.id,
+                'name': project.name,
+                'color': project.color,
+                'description': project.description,
+                'conversation_count': 0
+            }
+
+    def get_all_projects(self) -> list:
+        """
+        Get all projects.
+
+        Returns:
+            List of project dicts
+        """
+        with self.db.get_session() as session:
+            proj_repo = ProjectRepository(session)
+            projects = proj_repo.get_all_projects()
+
+            return [
+                {
+                    'id': proj.id,
+                    'name': proj.name,
+                    'color': proj.color,
+                    'description': proj.description,
+                    'conversation_count': len(proj.conversations)
+                }
+                for proj in projects
+            ]
+
+    def update_project(self, project_id: int, name: str = None, color: str = None, description: str = None) -> bool:
+        """
+        Update a project.
+
+        Args:
+            project_id: Project ID
+            name: New name (optional)
+            color: New color (optional)
+            description: New description (optional)
+
+        Returns:
+            True if updated, False if not found
+        """
+        with self.db.get_session() as session:
+            proj_repo = ProjectRepository(session)
+            project = proj_repo.update_project(
+                project_id=project_id,
+                name=name,
+                color=color,
+                description=description
+            )
+            return project is not None
+
+    def delete_project(self, project_id: int) -> bool:
+        """
+        Delete a project (conversations are moved to 'No Project').
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            True if deleted, False if not found
+        """
+        with self.db.get_session() as session:
+            proj_repo = ProjectRepository(session)
+            return proj_repo.delete_project(project_id)
+
+    def move_conversation_to_project(self, conversation_id: int, project_id: int = None) -> bool:
+        """
+        Move a conversation to a project.
+
+        Args:
+            conversation_id: Conversation ID
+            project_id: Target project ID (None to move to 'No Project')
+
+        Returns:
+            True if moved, False if conversation not found
+        """
+        with self.db.get_session() as session:
+            proj_repo = ProjectRepository(session)
+            return proj_repo.assign_conversation_to_project(conversation_id, project_id)
+
+    def get_conversations_for_project(self, project_id: int = None) -> list:
+        """
+        Get all conversations for a specific project.
+
+        Args:
+            project_id: Project ID (None for unorganized conversations)
+
+        Returns:
+            List of conversation dicts
+        """
+        with self.db.get_session() as session:
+            proj_repo = ProjectRepository(session)
+            conversations = proj_repo.get_conversations_by_project(project_id)
+
+            return [
+                {
+                    'id': conv.id,
+                    'title': conv.title,
+                    'updated_at': conv.updated_at.isoformat(),
+                    'message_count': len(conv.messages),
+                    'web_search_enabled': getattr(conv, 'web_search_enabled', False),
+                    'project_id': conv.project_id
+                }
+                for conv in conversations
+            ]

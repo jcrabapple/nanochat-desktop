@@ -1,16 +1,20 @@
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, GObject, Gdk
+from gi.repository import Gtk, GObject, Gdk, GLib
 
 
 class Sidebar(Gtk.Box):
-    """Sidebar with conversation list"""
+    """Sidebar with conversation list and project organization"""
 
     __gsignals__ = {
         'new-chat': (GObject.SIGNAL_RUN_FIRST, None, ()),
         'conversation-selected': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
         'conversation-deleted': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
         'conversation-renamed': (GObject.SIGNAL_RUN_FIRST, None, (object, str)),
+        'conversation-move-to-project': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        'project-created': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'project-selected': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        'project-deleted': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
         'settings-clicked': (GObject.SIGNAL_RUN_FIRST, None, ())
     }
 
@@ -18,6 +22,7 @@ class Sidebar(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
 
         self.set_size_request(280, -1)
+        self.set_hexpand(False)  # Prevent horizontal expansion
         self.add_css_class("sidebar")
 
         # New Chat button
@@ -43,17 +48,31 @@ class Sidebar(Gtk.Box):
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         self.append(separator)
 
-        # Scrolled window for conversation list
+        # Scrolled window for projects and conversation list
         self.scrolled = Gtk.ScrolledWindow()
         self.scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.scrolled.set_vexpand(True)
+
+        # Main content box inside scrolled window
+        self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+
+        # Projects section (collapsible)
+        self.projects_section = self._create_projects_section()
+        self.content_box.append(self.projects_section)
+
+        # Separator between projects and conversations
+        self.projects_separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        self.projects_separator.set_margin_top(8)
+        self.projects_separator.set_margin_bottom(8)
+        self.content_box.append(self.projects_separator)
 
         # Conversation list box
         self.conversation_list = Gtk.ListBox()
         self.conversation_list.add_css_class("conversation-list")
         self.conversation_list.connect("row-activated", self.on_conversation_selected)
-        self.scrolled.set_child(self.conversation_list)
+        self.content_box.append(self.conversation_list)
 
+        self.scrolled.set_child(self.content_box)
         self.append(self.scrolled)
 
         # Separator before settings button
@@ -83,9 +102,51 @@ class Sidebar(Gtk.Box):
         self.settings_button.connect("clicked", self.on_settings_clicked)
         self.append(self.settings_button)
 
-        # Store conversation data
+        # Store conversation and project data
         self.conversations = []
         self.all_conversations = []  # Store unfiltered conversations
+        self.projects = []  # Store projects
+        self.current_project_filter = None  # None = show all, int = filter by project
+
+    def _create_projects_section(self) -> Gtk.Box:
+        """Create the collapsible projects section"""
+        section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+
+        # Header with expander
+        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        header_box.set_margin_start(12)
+        header_box.set_margin_end(12)
+        header_box.set_margin_top(12)
+        header_box.set_margin_bottom(8)
+
+        # Projects label
+        projects_label = Gtk.Label(label="PROJECTS")
+        projects_label.add_css_class("conversation-group-header")
+        projects_label.set_halign(Gtk.Align.START)
+        projects_label.set_hexpand(True)
+        header_box.append(projects_label)
+
+        # Add project button
+        add_btn = Gtk.Button()
+        add_btn.set_icon_name("list-add-symbolic")
+        add_btn.set_tooltip_text("Create new project")
+        add_btn.add_css_class("flat")
+        add_btn.connect("clicked", self._on_add_project_clicked)
+        header_box.append(add_btn)
+
+        section.append(header_box)
+
+        # Projects list
+        self.projects_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.projects_list.set_margin_start(12)
+        self.projects_list.set_margin_end(12)
+        section.append(self.projects_list)
+
+        return section
+
+    def _on_add_project_clicked(self, button):
+        """Handle add project button click"""
+        self.emit('project-created')
 
     def on_settings_clicked(self, button):
         """Handle settings button click"""
@@ -147,6 +208,7 @@ class Sidebar(Gtk.Box):
                 row = ConversationRow(conv)
                 row.connect('delete-requested', self.on_delete_requested)
                 row.connect('rename-requested', self.on_rename_requested)
+                row.connect('move-to-project-requested', self.on_move_to_project_requested)
                 self.conversation_list.append(row)
 
     def on_search_changed(self, search_entry):
@@ -213,6 +275,10 @@ class Sidebar(Gtk.Box):
         """Handle rename request from conversation row"""
         self.emit('conversation-renamed', conversation_id, new_title)
 
+    def on_move_to_project_requested(self, row, conversation_id):
+        """Handle move to project request from conversation row"""
+        self.emit('conversation-move-to-project', conversation_id)
+
     def set_active_conversation(self, conversation_id: int):
         """Highlight active conversation"""
         row = self.conversation_list.get_first_child()
@@ -221,13 +287,165 @@ class Sidebar(Gtk.Box):
                 self.conversation_list.select_row(row)
             row = row.get_next_sibling()
 
+    # ==================== Project Management ====================
+
+    def populate_projects(self, projects: list):
+        """
+        Populate projects section.
+
+        Args:
+            projects: List of project dicts with keys: id, name, color, conversation_count
+        """
+        self.projects = projects
+
+        # Clear existing projects
+        child = self.projects_list.get_first_child()
+        while child:
+            next_child = child.get_next_sibling()
+            self.projects_list.remove(child)
+            child = next_child
+
+        # Add "All Conversations" option - count will be updated when conversations are populated
+        total_count = len(self.all_conversations) if self.all_conversations else 0
+        all_btn = self._create_project_button(None, "All Conversations", "#808080", total_count)
+        if self.current_project_filter is None:
+            all_btn.add_css_class("project-selected")
+        self.projects_list.append(all_btn)
+
+        # Add each project
+        for project in projects:
+            btn = self._create_project_button(
+                project['id'],
+                project['name'],
+                project.get('color', '#4a9eff'),
+                project.get('conversation_count', 0)
+            )
+            if self.current_project_filter == project['id']:
+                btn.add_css_class("project-selected")
+            self.projects_list.append(btn)
+
+        # Hide projects separator if no projects
+        self.projects_separator.set_visible(len(projects) > 0)
+
+    def _create_project_button(self, project_id, name: str, color: str, count: int) -> Gtk.Button:
+        """Create a project button row"""
+        btn = Gtk.Button()
+        btn.add_css_class("flat")
+        btn.add_css_class("project-row")
+        btn.project_id = project_id
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        # Color indicator
+        color_box = Gtk.Box()
+        color_box.set_size_request(12, 12)
+
+        # Apply color styling
+        css_provider = Gtk.CssProvider()
+        class_name = f"project-color-{project_id if project_id else 'all'}"
+        css = f"""
+            .{class_name} {{
+                background-color: {color};
+                border-radius: 6px;
+                min-width: 12px;
+                min-height: 12px;
+            }}
+        """
+        css_provider.load_from_data(css.encode())
+        color_box.get_style_context().add_provider(
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        color_box.add_css_class(class_name)
+        box.append(color_box)
+
+        # Project name
+        label = Gtk.Label(label=name)
+        label.set_halign(Gtk.Align.START)
+        label.set_hexpand(True)
+        label.set_ellipsize(True)
+        box.append(label)
+
+        # Conversation count
+        count_label = Gtk.Label(label=str(count))
+        count_label.add_css_class("dim-label")
+        box.append(count_label)
+
+        btn.set_child(box)
+        btn.connect("clicked", self._on_project_clicked, project_id)
+
+        # Add right-click menu for projects (not for "All")
+        if project_id is not None:
+            right_click = Gtk.GestureClick()
+            right_click.set_button(3)
+            right_click.connect("pressed", self._on_project_right_click, project_id)
+            btn.add_controller(right_click)
+
+        return btn
+
+    def _on_project_clicked(self, button, project_id):
+        """Handle project button click - filter conversations"""
+        self.current_project_filter = project_id
+        self.emit('project-selected', project_id)
+
+        # Visual feedback - highlight selected project
+        child = self.projects_list.get_first_child()
+        while child:
+            if hasattr(child, 'project_id'):
+                if child.project_id == project_id:
+                    child.add_css_class("project-selected")
+                else:
+                    child.remove_css_class("project-selected")
+            child = child.get_next_sibling()
+
+    def _on_project_right_click(self, gesture, n_press, x, y, project_id):
+        """Show context menu for project"""
+        if n_press == 1:
+            widget = gesture.get_widget()
+
+            popover = Gtk.Popover()
+            popover.set_parent(widget)
+
+            menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            menu_box.set_margin_start(8)
+            menu_box.set_margin_end(8)
+            menu_box.set_margin_top(8)
+            menu_box.set_margin_bottom(8)
+
+            # Delete button
+            delete_btn = Gtk.Button(label="Delete Project")
+            delete_btn.add_css_class("destructive-action")
+            delete_btn.connect("clicked", lambda b: self._delete_project(project_id, popover))
+            menu_box.append(delete_btn)
+
+            popover.set_child(menu_box)
+            popover.popup()
+
+    def _delete_project(self, project_id, popover):
+        """Delete a project"""
+        popover.popdown()
+        self.emit('project-deleted', project_id)
+
+    def filter_by_project(self, project_id):
+        """Filter conversations by project ID (None for all)"""
+        self.current_project_filter = project_id
+
+        if project_id is None:
+            # Show all conversations
+            self._display_conversations(self.all_conversations)
+        else:
+            # Filter by project
+            filtered = [c for c in self.all_conversations if c.get('project_id') == project_id]
+            self._display_conversations(filtered)
+
 
 class ConversationRow(Gtk.ListBoxRow):
     """Single conversation row in sidebar"""
 
     __gsignals__ = {
         'delete-requested': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
-        'rename-requested': (GObject.SIGNAL_RUN_FIRST, None, (object, str))
+        'rename-requested': (GObject.SIGNAL_RUN_FIRST, None, (object, str)),
+        'move-to-project-requested': (GObject.SIGNAL_RUN_FIRST, None, (object,))
     }
 
     def __init__(self, conversation: dict):
@@ -320,7 +538,11 @@ class ConversationRow(Gtk.ListBoxRow):
 
         # Connect signals
         self.title_entry.connect("activate", self.on_rename_activate)
-        self.title_entry.connect("focus-out", self.on_rename_cancel)
+
+        # Add focus controller for blur/focus-out (GTK4)
+        focus_controller = Gtk.EventControllerFocus()
+        focus_controller.connect("leave", self.on_rename_focus_leave)
+        self.title_entry.add_controller(focus_controller)
 
         # Add key controller for Escape
         key_controller = Gtk.EventControllerKey()
@@ -350,16 +572,16 @@ class ConversationRow(Gtk.ListBoxRow):
             self.emit('rename-requested', self.conversation_id, new_title)
         self.finish_rename()
 
-    def on_rename_cancel(self, entry, unknown):
-        """Handle focus-out (cancel edit)"""
-        # Cancel if empty or same as original
-        new_title = entry.get_text().strip()
-        if not new_title or new_title == self.original_title:
-            self.finish_rename()
-        else:
+    def on_rename_focus_leave(self, controller):
+        """Handle focus leave (GTK4 EventControllerFocus)"""
+        if not self.is_editing or not self.title_entry:
+            return
+        # Save if changed, otherwise cancel
+        new_title = self.title_entry.get_text().strip()
+        if new_title and new_title != self.original_title:
             self.original_title = new_title
             self.emit('rename-requested', self.conversation_id, new_title)
-            self.finish_rename()
+        self.finish_rename()
 
     def on_rename_key_pressed(self, controller, keyval, keycode, state):
         """Handle key press in rename entry"""
@@ -418,14 +640,39 @@ class ConversationRow(Gtk.ListBoxRow):
             rect.height = 1
             popover.set_pointing_to(rect)
 
-            # Create delete button
+            # Create menu box
+            menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            menu_box.set_margin_start(8)
+            menu_box.set_margin_end(8)
+            menu_box.set_margin_top(8)
+            menu_box.set_margin_bottom(8)
+
+            # Move to Project button
+            move_btn = Gtk.Button(label="Move to Project...")
+            move_btn.add_css_class("flat")
+            move_btn.connect("clicked", self._on_move_to_project, popover)
+            menu_box.append(move_btn)
+
+            # Separator
+            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            separator.set_margin_top(4)
+            separator.set_margin_bottom(4)
+            menu_box.append(separator)
+
+            # Delete button
             delete_btn = Gtk.Button(label="Delete")
+            delete_btn.add_css_class("destructive-action")
             delete_btn.connect("clicked", self.on_context_delete_close, popover)
-            delete_btn.add_css_class("menu-item")
+            menu_box.append(delete_btn)
 
             # Add to popover
-            popover.set_child(delete_btn)
+            popover.set_child(menu_box)
             popover.popup()
+
+    def _on_move_to_project(self, button, popover):
+        """Handle move to project from context menu"""
+        popover.popdown()
+        self.emit('move-to-project-requested', self.conversation_id)
 
     def on_context_delete_close(self, widget, popover):
         """Handle delete from context menu and close popover"""
@@ -435,3 +682,4 @@ class ConversationRow(Gtk.ListBoxRow):
     def on_context_delete(self, widget):
         """Handle delete from context menu"""
         self.emit('delete-requested', self.conversation_id)
+

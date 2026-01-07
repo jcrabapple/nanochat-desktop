@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 class SettingsDialog(Gtk.Dialog):
     """Settings dialog for API configuration"""
 
-    def __init__(self, parent, current_api_key: str = "", current_base_url: str = "", current_model: str = ""):
+    def __init__(self, parent, current_api_key: str = "", current_base_url: str = "", current_model: str = "", current_title_model: str = ""):
         super().__init__(title="Settings")
 
-        self.set_default_size(500, 450)
+        self.set_default_size(500, 500)
         self.set_modal(True)
         self.set_transient_for(parent)
 
@@ -24,6 +24,7 @@ class SettingsDialog(Gtk.Dialog):
         # Model list state
         self.available_models = []
         self.selected_model = current_model or "gpt-4"
+        self.selected_title_model = current_title_model or self.selected_model
         self.is_fetching_models = False
 
         # Get app state for model fetching
@@ -41,7 +42,7 @@ class SettingsDialog(Gtk.Dialog):
         content.append(self.notebook)
 
         # API Configuration tab
-        api_page = self.create_api_config_page(current_api_key, current_base_url, current_model)
+        api_page = self.create_api_config_page(current_api_key, current_base_url, current_model, current_title_model)
         self.notebook.append_page(api_page, Gtk.Label(label="API Configuration"))
 
         # Modes tab
@@ -63,7 +64,7 @@ class SettingsDialog(Gtk.Dialog):
         # Connect response signal
         self.connect("response", self.on_response)
 
-    def create_api_config_page(self, current_api_key: str, current_base_url: str, current_model: str):
+    def create_api_config_page(self, current_api_key: str, current_base_url: str, current_model: str, current_title_model: str):
         """Create API Configuration tab page"""
         form_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         form_box.set_margin_start(12)
@@ -109,7 +110,7 @@ class SettingsDialog(Gtk.Dialog):
         api_key_box.append(self.base_url_entry)
 
         # Model selection with dropdown
-        model_label = Gtk.Label(label="Model:")
+        model_label = Gtk.Label(label="Default Model:")
         model_label.set_halign(Gtk.Align.START)
         api_key_box.append(model_label)
 
@@ -139,6 +140,24 @@ class SettingsDialog(Gtk.Dialog):
         self.model_status_label.set_halign(Gtk.Align.START)
         self.model_status_label.set_wrap(True)
         api_key_box.append(self.model_status_label)
+
+        # Title Generation Model selection
+        title_model_label = Gtk.Label(label="Title Generation Model:")
+        title_model_label.set_halign(Gtk.Align.START)
+        title_model_label.set_margin_top(8)
+        api_key_box.append(title_model_label)
+
+        # Title Model dropdown
+        self.title_model_dropdown = Gtk.ComboBoxText()
+        self.title_model_dropdown.set_hexpand(True)
+        self.title_model_dropdown.connect("changed", self.on_title_model_changed)
+        api_key_box.append(self.title_model_dropdown)
+
+        title_model_desc = Gtk.Label(label="Used for auto-generating conversation titles. Choose a small/fast model.")
+        title_model_desc.add_css_class("dim-label")
+        title_model_desc.set_halign(Gtk.Align.START)
+        title_model_desc.set_wrap(True)
+        api_key_box.append(title_model_desc)
 
         # Load models after UI is shown
         self.connect("show", self.on_dialog_show)
@@ -275,7 +294,8 @@ class SettingsDialog(Gtk.Dialog):
             config.save_to_file(
                 values['api_key'],
                 values['api_base_url'],
-                values['model']
+                values['model'],
+                values['title_model']
             )
 
             # Reinitialize API client if controller exists
@@ -309,10 +329,15 @@ class SettingsDialog(Gtk.Dialog):
         if not selected_model:
             selected_model = self.selected_model
 
+        selected_title_model = self.title_model_dropdown.get_active_text()
+        if not selected_title_model:
+            selected_title_model = self.selected_title_model
+
         return {
             'api_key': self.api_key_entry.get_text(),
             'api_base_url': self.base_url_entry.get_text(),
-            'model': selected_model
+            'model': selected_model,
+            'title_model': selected_title_model
         }
 
     def on_dialog_show(self, dialog):
@@ -355,6 +380,13 @@ class SettingsDialog(Gtk.Dialog):
         if model_id:
             self.selected_model = model_id
             logger.debug(f"Model selected: {model_id}")
+
+    def on_title_model_changed(self, dropdown):
+        """Handle title model dropdown change"""
+        model_id = dropdown.get_active_text()
+        if model_id:
+            self.selected_title_model = model_id
+            logger.debug(f"Title model selected: {model_id}")
 
     def on_refresh_models(self, button):
         """Handle refresh button click"""
@@ -415,9 +447,11 @@ class SettingsDialog(Gtk.Dialog):
     def _populate_model_dropdown(self):
         """Populate the model dropdown with available models"""
         self.model_dropdown.remove_all()
+        self.title_model_dropdown.remove_all()
 
         for model in self.available_models:
             self.model_dropdown.append_text(model)
+            self.title_model_dropdown.append_text(model)
 
         # Select the current model
         if self.selected_model in self.available_models:
@@ -427,3 +461,17 @@ class SettingsDialog(Gtk.Dialog):
             # Select first model if current not found
             self.model_dropdown.set_active(0)
             self.selected_model = self.available_models[0]
+
+        # Select the current title model
+        if self.selected_title_model in self.available_models:
+            index = self.available_models.index(self.selected_title_model)
+            self.title_model_dropdown.set_active(index)
+        elif self.available_models:
+            # Select default model or first available
+            if self.selected_model in self.available_models:
+                index = self.available_models.index(self.selected_model)
+                self.title_model_dropdown.set_active(index)
+                self.selected_title_model = self.selected_model
+            else:
+                self.title_model_dropdown.set_active(0)
+                self.selected_title_model = self.available_models[0]

@@ -70,13 +70,19 @@ class NanoChatApplication(Gtk.Application):
         return False  # Don't repeat
 
     def load_conversations(self):
-        """Load conversations into sidebar"""
+        """Load conversations and projects into sidebar"""
         try:
+            # Load conversations first (so project counts are correct)
             conversations = self.app_state.get_all_conversations()
             self.window.sidebar.populate_conversations(conversations)
             logger.info(f"Loaded {len(conversations)} conversations")
+
+            # Then load projects (with correct counts)
+            projects = self.app_state.get_all_projects()
+            self.window.sidebar.populate_projects(projects)
+            logger.info(f"Loaded {len(projects)} projects")
         except Exception as e:
-            logger.error(f"Failed to load conversations: {e}")
+            logger.error(f"Failed to load sidebar data: {e}")
 
     def _fetch_models_on_startup(self):
         """Fetch models on startup if cache is empty"""
@@ -175,6 +181,16 @@ class NanoChatApplication(Gtk.Application):
             # Reload conversations (updated timestamp)
             GLib.idle_add(self.load_conversations)
 
+            # Auto-generate title for new conversations (first exchange)
+            if self.app_state.current_conversation_id:
+                messages = self.app_state.get_conversation_messages(
+                    self.app_state.current_conversation_id
+                )
+                # Check if this is the first exchange (exactly 2 messages)
+                if len(messages) == 2:
+                    logger.info("First exchange complete, generating title...")
+                    await self._generate_title_async()
+
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
             # Show error in UI
@@ -210,6 +226,19 @@ class NanoChatApplication(Gtk.Application):
         dialog.set_property("secondary-text", error_message)
         dialog.present()
         return False  # Don't repeat
+
+    async def _generate_title_async(self):
+        """Generate a title for the current conversation"""
+        try:
+            conversation_id = self.app_state.current_conversation_id
+            if conversation_id:
+                title = await self.app_state.generate_conversation_title(conversation_id)
+                if title:
+                    logger.info(f"Auto-generated title: {title}")
+                    # Refresh sidebar to show new title
+                    GLib.idle_add(self.load_conversations)
+        except Exception as e:
+            logger.error(f"Failed to auto-generate title: {e}")
 
 
 def main():

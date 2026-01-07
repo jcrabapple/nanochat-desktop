@@ -48,7 +48,8 @@ button.suggested-action:hover {
 /* Message containers */
 .message-row {
     padding: 4px 0;
-    border-bottom: none;  /* Remove borders for cleaner bubble look */
+    border-bottom: none;
+    /* Remove borders for cleaner bubble look */
 }
 
 /* Message bubbles */
@@ -61,7 +62,8 @@ button.suggested-action:hover {
 .user-bubble {
     background-color: #2a7aed;
     color: #ffffff;
-    border-bottom-right-radius: 4px;  /* Visual indicator for message source */
+    border-bottom-right-radius: 4px;
+    /* Visual indicator for message source */
 }
 
 /* Ensure user message labels have white text */
@@ -81,7 +83,8 @@ button.suggested-action:hover {
 .assistant-bubble {
     background-color: #2a2b2e;
     color: #e0e0e0;
-    border-bottom-left-radius: 4px;  /* Visual indicator for message source */
+    border-bottom-left-radius: 4px;
+    /* Visual indicator for message source */
     /* No max-width constraint - let it expand naturally */
 }
 
@@ -105,8 +108,7 @@ button.suggested-action:hover {
     opacity: 0.7;
 }
 
-.message-row.user .message-role-label {
-}
+.message-row.user .message-role-label {}
 
 .message-timestamp {
     font-size: 0.7em;
@@ -123,8 +125,7 @@ button.suggested-action:hover {
 }
 
 /* Note: Animation not supported in GTK CSS, dots will be static */
-.typing-dots {
-}
+.typing-dots {}
 
 .typing-dot {
     background-color: #4a9eff;
@@ -202,6 +203,7 @@ link:hover {
 scrolledwindow {
     background-color: transparent;
 }
+
 button {
     border-radius: 6px;
     padding: 6px 12px;
@@ -319,7 +321,8 @@ button.flat:hover {
 /* Delete button in conversation rows */
 button.delete-button {
     background-color: transparent;
-    color: #e57373;  /* Light red */
+    color: #e57373;
+    /* Light red */
     border: none;
     padding: 4px;
     min-width: 24px;
@@ -330,7 +333,8 @@ button.delete-button {
 
 button.delete-button:hover {
     background-color: rgba(229, 115, 115, 0.15);
-    color: #ff5252;  /* Brighter red */
+    color: #ff5252;
+    /* Brighter red */
 }
 
 /* Context menu styling */
@@ -345,8 +349,10 @@ button.menu-item:hover {
 
 /* Icon buttons (web search only - send button removed from this class) */
 button.icon-button {
-    background-color: #2a2b2e;  /* Match input background */
-    color: #606060;  /* Dark gray for inactive */
+    background-color: #2a2b2e;
+    /* Match input background */
+    color: #606060;
+    /* Dark gray for inactive */
     border: none;
     padding: 4px;
     min-width: 28px;
@@ -361,8 +367,10 @@ button.icon-button:hover {
 
 /* Active web search button */
 button.icon-button-active {
-    color: #4a9eff;  /* Bright blue - accent color */
-    background-color: #1e3a5f;  /* Darker blue background */
+    color: #4a9eff;
+    /* Bright blue - accent color */
+    background-color: #1e3a5f;
+    /* Darker blue background */
 }
 
 button.icon-button-active:hover {
@@ -371,7 +379,8 @@ button.icon-button-active:hover {
 
 /* Send button specific styling */
 button.send-button {
-    background-color: #4a9eff;  /* Always blue */
+    background-color: #4a9eff;
+    /* Always blue */
     color: #ffffff;
     min-width: 28px;
     min-height: 28px;
@@ -455,7 +464,8 @@ button.floating-button {
 button.navigation-button {
     min-width: 40px;
     min-height: 40px;
-    border-radius: 50%;  /* Make buttons round */
+    border-radius: 50%;
+    /* Make buttons round */
     background-color: #2a2b2e;
     color: #e0e0e0;
     border: 1px solid #3a3b3e;
@@ -464,7 +474,7 @@ button.navigation-button {
 }
 
 /* Make icons smaller */
-button.navigation-button > * {
+button.navigation-button>* {
     font-size: 14px;
     padding: 0;
 }
@@ -488,4 +498,107 @@ button.navigation-button:active {
     border-radius: 8px;
     font-size: 0.9em;
     margin: 8px 24px;
+}
+
+/* ==================== Project Organization ==================== */
+
+/* Project row buttons */
+.project-row {
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 2px;
+    transition: background-color 200ms;
+}
+
+.project-row:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.project-row.project-selected {
+    background-color: rgba(74, 158, 255, 0.2);
+}
+
+/* Project color buttons in dialog */
+.color-button {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 20px;
+    padding: 0;
+    border: 2px solid transparent;
+    transition: all 200ms;
+}
+
+.color-button:hover {
+    opacity: 0.85;
+    transform: scale(1.05);
+}
+
+.color-button-selected {
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 8px rgba(74, 158, 255, 0.5);
+}
+
+/* Project dialog */
+.project-dialog entry {
+    background-color: #2a2b2e;
+    color: #e0e0e0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid #3a3b3e;
+}
+
+.project-dialog entry:focus {
+    border-color: #4a9eff;
+}
+
+/* Boxed list for move-to-project dialog */
+.boxed-list {
+    background-color: #2a2b2e;
+    border-radius: 12px;
+}
+
+.boxed-list>row {
+    padding: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.boxed-list>row:last-child {
+    border-bottom: none;
+}
+
+.boxed-list>row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.boxed-list>row:selected {
+    background-color: rgba(74, 158, 255, 0.2);
+}
+
+/* Project color dot */
+.project-color-dot {
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: 8px;
+}
+
+/* Destructive action button */
+button.destructive-action {
+    background-color: #e53935;
+    color: #ffffff;
+}
+
+button.destructive-action:hover {
+    background-color: #f44336;
+}
+
+
+/* Markdown TextView (fallback renderer) */
+.markdown-textview {
+    font-family: 'Inter', 'Ubuntu', 'Cantarell', 'Segoe UI', 'Roboto', sans-serif;
+    caret-color: transparent;
+    /* Hide cursor since it is read-only */
+}
+
+.markdown-textview text {
+    background-color: transparent;
 }

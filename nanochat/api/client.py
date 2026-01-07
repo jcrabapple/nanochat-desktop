@@ -63,7 +63,8 @@ class NanoGPTClient:
         use_web_search: bool = False,
         stream: bool = True,
         temperature: float = 0.7,
-        max_tokens: int = DEFAULT_MAX_TOKENS
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        model: Optional[str] = None
     ):
         """
         Send message to API and stream response
@@ -75,6 +76,7 @@ class NanoGPTClient:
             stream: Whether to stream response
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
+            model: Optional model override
 
         Yields:
             StreamChunk objects with response content
@@ -89,7 +91,7 @@ class NanoGPTClient:
                 await gen.aclose()
         else:
             # Use standard chat completions API with proper cleanup
-            gen = self._chat_completions(message, conversation_history, stream, temperature, max_tokens)
+            gen = self._chat_completions(message, conversation_history, stream, temperature, max_tokens, model)
             try:
                 async for chunk in gen:
                     yield chunk
@@ -170,7 +172,8 @@ class NanoGPTClient:
         conversation_history: list[dict],
         stream: bool,
         temperature: float,
-        max_tokens: int
+        max_tokens: int,
+        model: Optional[str] = None
     ):
         """Send message to standard chat completions API"""
         # Prepare messages list
@@ -182,7 +185,7 @@ class NanoGPTClient:
 
         # Build request
         request_data = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": messages,
             "stream": stream,
             "temperature": temperature,

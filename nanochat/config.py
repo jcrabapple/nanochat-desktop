@@ -34,6 +34,7 @@ class Config:
         self._api_key: Optional[str] = None
         self._api_base_url: Optional[str] = None
         self._model: Optional[str] = None
+        self._title_model: Optional[str] = None
         self._db_path: Optional[str] = None
 
         # Try to load from config file
@@ -61,12 +62,14 @@ class Config:
                                 self._api_base_url = value
                             elif key == 'model':
                                 self._model = value
+                            elif key == 'title_model':
+                                self._title_model = value
 
                 logger.info(f"Loaded config from {config_file}")
             except Exception as e:
                 logger.warning(f"Failed to load config file: {e}")
 
-    def save_to_file(self, api_key: str, api_base_url: str = None, model: str = None):
+    def save_to_file(self, api_key: str, api_base_url: str = None, model: str = None, title_model: str = None):
         """
         Save configuration to user config file
 
@@ -74,6 +77,7 @@ class Config:
             api_key: API key to save
             api_base_url: API base URL (optional)
             model: Model name (optional)
+            title_model: Title generation model name (optional)
         """
         config_dir = Path.home() / ".config" / "nanochat"
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +90,8 @@ class Config:
                     f.write(f"api_base_url={api_base_url}\n")
                 if model:
                     f.write(f"model={model}\n")
+                if title_model:
+                    f.write(f"title_model={title_model}\n")
 
             # Update cached values
             self._api_key = api_key
@@ -93,6 +99,8 @@ class Config:
                 self._api_base_url = api_base_url
             if model:
                 self._model = model
+            if title_model:
+                self._title_model = title_model
 
             logger.info(f"Saved config to {config_file}")
         except Exception as e:
@@ -127,6 +135,14 @@ class Config:
             return self._model
 
         return os.getenv("NANOCHAT_MODEL", self.DEFAULT_MODEL)
+
+    @property
+    def title_model(self) -> str:
+        """Get model for title generation"""
+        if hasattr(self, '_title_model') and self._title_model:
+            return self._title_model
+            
+        return os.getenv("NANOCHAT_TITLE_MODEL", self.model)
 
     @property
     def db_path(self) -> str:
