@@ -3,7 +3,7 @@
 # Application Info
 APP_ID = "com.nanochat.desktop"
 APP_NAME = "NanoChat Desktop"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.4.0"
 
 # UI Constants
 DEFAULT_WINDOW_WIDTH = 1200
