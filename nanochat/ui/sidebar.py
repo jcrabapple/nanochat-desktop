@@ -405,6 +405,7 @@ class Sidebar(Gtk.Box):
 
             popover = Gtk.Popover()
             popover.set_parent(widget)
+            popover.connect("closed", lambda p: p.unparent())
 
             menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             menu_box.set_margin_start(8)
@@ -455,19 +456,20 @@ class ConversationRow(Gtk.ListBoxRow):
         self.original_title = conversation['title']
         self.is_editing = False
 
-        # Main box
-        self.main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        self.main_box.set_margin_start(12)
-        self.main_box.set_margin_end(12)
-        self.main_box.set_margin_top(8)
-        self.main_box.set_margin_bottom(8)
+        # Main overlay
+        self.main_overlay = Gtk.Overlay()
+        self.main_overlay.set_margin_start(12)
+        self.main_overlay.set_margin_end(12)
+        self.main_overlay.set_margin_top(8)
+        self.main_overlay.set_margin_bottom(8)
 
-        # Title and metadata
+        # Title and metadata container (fills the overlay)
         self.text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
 
         # Title
         self.title_label = Gtk.Label(label=conversation['title'])
-        self.title_label.set_halign(Gtk.Align.START)
+        self.title_label.set_halign(Gtk.Align.CENTER)
+        self.title_label.set_hexpand(True)  # Expand to fill width for centering
         self.title_label.set_ellipsize(True)  # Truncate with "..."
         self.title_label.set_width_chars(25)
         self.text_box.append(self.title_label)
@@ -476,42 +478,46 @@ class ConversationRow(Gtk.ListBoxRow):
         metadata = f"{conversation.get('message_count', 0)} messages"
         meta_label = Gtk.Label(label=metadata)
         meta_label.add_css_class("dim-label")
-        meta_label.set_halign(Gtk.Align.START)
+        meta_label.set_halign(Gtk.Align.CENTER)
         meta_label.set_size_request(200, -1)
         self.text_box.append(meta_label)
 
-        self.main_box.append(self.text_box)
+        self.main_overlay.set_child(self.text_box)
 
-        # Delete button (trash icon, initially hidden)
+        # Delete button (trash icon, initially hidden, overlay on right)
         self.delete_button = Gtk.Button()
         trash_icon = Gtk.Image.new_from_icon_name("user-trash-symbolic")
         trash_icon.set_pixel_size(16)
         self.delete_button.set_child(trash_icon)
         self.delete_button.set_tooltip_text("Delete conversation")
         self.delete_button.add_css_class("delete-button")
+        self.delete_button.set_valign(Gtk.Align.CENTER)
+        self.delete_button.set_halign(Gtk.Align.END)
         self.delete_button.set_opacity(0)  # Hidden initially
         self.delete_button.connect("clicked", self.on_delete_clicked)
-        self.main_box.append(self.delete_button)
+        
+        # Add delete button to overlay
+        self.main_overlay.add_overlay(self.delete_button)
 
-        self.set_child(self.main_box)
+        self.set_child(self.main_overlay)
 
-        # Add hover controller to the main box
+        # Add hover controller to the main overlay
         hover_controller = Gtk.EventControllerMotion()
         hover_controller.connect("enter", self.on_hover_enter)
         hover_controller.connect("leave", self.on_hover_leave)
-        self.main_box.add_controller(hover_controller)
+        self.main_overlay.add_controller(hover_controller)
 
         # Add double-click controller for rename
         click_controller = Gtk.GestureClick()
         click_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         click_controller.connect("pressed", self.on_double_click)
-        self.main_box.add_controller(click_controller)
+        self.main_overlay.add_controller(click_controller)
 
         # Add right-click controller
         right_click_controller = Gtk.GestureClick()
         right_click_controller.set_button(3)  # Right click
         right_click_controller.connect("pressed", self.on_right_click)
-        self.main_box.add_controller(right_click_controller)
+        self.main_overlay.add_controller(right_click_controller)
 
     def on_double_click(self, gesture, n_press, x, y):
         """Handle double-click to start editing"""
@@ -600,7 +606,7 @@ class ConversationRow(Gtk.ListBoxRow):
 
         # Create new label with updated title
         new_label = Gtk.Label(label=self.original_title)
-        new_label.set_halign(Gtk.Align.START)
+        new_label.set_halign(Gtk.Align.CENTER)
         new_label.set_ellipsize(True)
         new_label.set_width_chars(25)
 

@@ -10,7 +10,7 @@ import asyncio
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ class NanoChatApplication(Gtk.Application):
         self.window = None
         self.current_assistant_message = ""  # Accumulate streaming response
         self.current_message_row = None  # Track the message row widget
+        self.stop_generation_flag = False  # Flag to stop generation
 
         # Force dark theme
         self._setup_dark_theme()
@@ -46,6 +47,9 @@ class NanoChatApplication(Gtk.Application):
 
             # Set controllers on window
             self.window.set_app_controllers(self, self.app_state)
+
+            # Connect stop generation signal
+            self.window.chat_view.connect('stop-generation', self.on_stop_generation)
 
             # Check if configured
             if not config.is_configured():
@@ -112,8 +116,16 @@ class NanoChatApplication(Gtk.Application):
         thread = threading.Thread(target=fetch_models_thread, daemon=True)
         thread.start()
 
+    def on_stop_generation(self, chat_view):
+        """Handle stop generation request"""
+        logger.info("Stop generation signal received")
+        self.stop_generation_flag = True
+
     def send_message_async(self, message: str, use_web_search: bool = False):
         """Send message asynchronously (run from UI thread)"""
+        # Reset stop flag
+        self.stop_generation_flag = False
+
         # Run async function in a background thread
         thread = threading.Thread(
             target=self._run_async_task,
@@ -149,14 +161,20 @@ class NanoChatApplication(Gtk.Application):
         try:
             # Stream response (now returns 3-tuple: role, content, web_sources)
             async for role, content, web_sources in gen:
+                # Check if stop was requested
+                if self.stop_generation_flag:
+                    logger.info("Generation stopped by user")
+                    break
+
                 if role == 'user':
                     # User message - add immediately
                     GLib.idle_add(self._update_chat_with_message, role, content, None, False)
 
-                    # Show typing indicator AFTER user message is added
-                    GLib.idle_add(self.window.chat_view.show_typing_indicator)
+                    # Show typing indicator detected (and stop button)
+                    GLib.idle_add(self.window.chat_view.start_generation)
                 elif role == 'assistant':
                     # Hide typing indicator on first assistant chunk
+                    # But KEEP STOP BUTTON VISIBLE (don't call finish_generation yet)
                     if first_chunk:
                         GLib.idle_add(self.window.chat_view.hide_typing_indicator)
 
@@ -181,14 +199,18 @@ class NanoChatApplication(Gtk.Application):
             # Reload conversations (updated timestamp)
             GLib.idle_add(self.load_conversations)
 
+            # Ensure generator is closed (saving any partial message)
+            await gen.aclose()
+
             # Auto-generate title for new conversations (first exchange)
             if self.app_state.current_conversation_id:
                 messages = self.app_state.get_conversation_messages(
                     self.app_state.current_conversation_id
                 )
-                # Check if this is the first exchange (exactly 2 messages)
-                if len(messages) == 2:
-                    logger.info("First exchange complete, generating title...")
+                # Check if this is the first exchange OR title is still default
+                conv = self.app_state.get_conversation(self.app_state.current_conversation_id)
+                if len(messages) >= 2 and (len(messages) == 2 or (conv and conv['title'] == "New Conversation")):
+                    logger.info("Generating title for conversation...")
                     await self._generate_title_async()
 
         except Exception as e:
@@ -196,8 +218,9 @@ class NanoChatApplication(Gtk.Application):
             # Show error in UI
             GLib.idle_add(self._show_error, str(e))
         finally:
-            # Ensure typing indicator is hidden
-            GLib.idle_add(self.window.chat_view.hide_typing_indicator)
+            # Finish generation (hide stop button, show continue button if stopped)
+            was_stopped = getattr(self, 'stop_generation_flag', False)
+            GLib.idle_add(self.window.chat_view.finish_generation, was_stopped)
             # Close the generator to clean up resources
             try:
                 await gen.aclose()

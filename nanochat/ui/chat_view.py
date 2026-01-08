@@ -1,6 +1,15 @@
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, GObject, GLib, Pango, Gdk
+
+# Try to import Adw (libadwaita) - optional for toast notifications
+try:
+    gi.require_version('Adw', '1')
+    from gi.repository import Gtk, GObject, GLib, Pango, Gdk, Adw
+    ADW_AVAILABLE = True
+except (ValueError, ImportError):
+    from gi.repository import Gtk, GObject, GLib, Pango, Gdk
+    Adw = None
+    ADW_AVAILABLE = False
 
 # Try to import WebKit2, but make it optional
 try:
@@ -22,6 +31,7 @@ import logging
 
 from nanochat.ui.action_bar import ActionBar
 from nanochat.ui.suggested_prompts import SuggestedPrompts
+from nanochat.ui.thinking_widget import ThinkingWidget
 from nanochat.state.conversation_mode import ConversationMode
 
 logger = logging.getLogger(__name__)
@@ -32,38 +42,51 @@ class MarkdownView(Gtk.Box):
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        
+        # Don't expand horizontally - let parent control width
+        self.set_hexpand(False)
 
-        if WEBKIT_AVAILABLE:
+        # Disable WebView - use Label fallback which has better width control
+        # WebView in GTK4 has stubborn sizing behavior that's very hard to constrain
+        use_webkit = False  # Force Label fallback for now
+        
+        if use_webkit and WEBKIT_AVAILABLE:
             # Create WebView
             self.webview = WebKit2.WebView()
             settings = self.webview.get_settings()
             settings.set_enable_javascript(False)  # Security
             settings.set_enable_plugins(False)
+            self.webview.set_hexpand(False)
+            self.webview.set_halign(Gtk.Align.START)
 
-            # Create scrolled window
+            # Create scrolled window with constrained width
             scrolled = Gtk.ScrolledWindow()
             scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
             scrolled.set_child(self.webview)
             scrolled.set_vexpand(True)
-            scrolled.set_hexpand(True)
+            scrolled.set_hexpand(False)  # Don't expand horizontally
+            scrolled.set_halign(Gtk.Align.START)
+            scrolled.set_size_request(500, -1)  # Fixed width of 500px
 
             self.append(scrolled)
             self.use_webview = True
             self.load_html("")
         else:
-            # Fallback to simple TextView
-            logger.warning("WebKit2 not available, using TextView for markdown rendering")
-            self.text_view = Gtk.TextView()
-            self.text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-            self.text_view.set_editable(False)
-            self.text_view.set_left_margin(16)
-            self.text_view.set_right_margin(16)
-            self.text_view.set_top_margin(8)
-            self.text_view.set_bottom_margin(12)
-            self.text_view.set_hexpand(True)
-            self.text_view.add_css_class("markdown-textview")  # Add CSS class for consistency
-            # Don't put in scrolled window - let content expand naturally
-            self.append(self.text_view)
+            # Use Label for markdown rendering - much better width control
+            # Pattern from Newelle: width_chars=1 with wrap=True makes widget shrink to content
+            logger.info("Using Label for markdown rendering (better width control)")
+            self.text_label = Gtk.Label()
+            self.text_label.set_wrap(True)
+            self.text_label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+            self.text_label.set_halign(Gtk.Align.START)
+            self.text_label.set_valign(Gtk.Align.START)
+            self.text_label.set_hexpand(False)  # Don't expand horizontally
+            self.text_label.set_vexpand(False)  # Don't expand vertically either
+            self.text_label.set_justify(Gtk.Justification.LEFT)  # Left justify text
+            self.text_label.set_size_request(500, -1)  # Fixed 500px width, dynamic height
+            self.text_label.set_selectable(True)  # Allow text selection
+            self.text_label.add_css_class("markdown-textview")  # Reuse CSS class
+            self.append(self.text_label)
             self.use_webview = False
 
     def load_html(self, content: str):
@@ -80,16 +103,15 @@ class MarkdownView(Gtk.Box):
             self.webview.load_html(full_html)
             logger.debug(f"Loaded HTML content ({len(content)} chars via WebView)")
         else:
-            # Fallback: display as Pango markup
-            # Convert markdown to Pango markup
-            pango_content = self._markdown_to_plain_text(content)
+            # Fallback: display as formatted text in Label
+            # Convert markdown to plain text (with some formatting)
+            text_content = self._markdown_to_plain_text(content)
 
-            buffer = self.text_view.get_buffer()
-            # Use insert_markup to render Pango markup
-            buffer.delete(buffer.get_start_iter(), buffer.get_end_iter())
-            # Pass -1 as length to let GTK calculate it automatically from the string
-            buffer.insert_markup(buffer.get_start_iter(), pango_content, -1)
-            logger.debug(f"Loaded Pango markup content ({len(content)} chars via TextView fallback)")
+            # Set the label text
+            self.text_label.set_markup(text_content)
+            logger.debug(f"Loaded text content ({len(content)} chars via Label fallback)")
+
+            # Labels resize automatically, no need to force resize
 
     def _markdown_to_plain_text(self, content: str) -> str:
         """Convert markdown to Pango markup for TextView fallback"""
@@ -326,7 +348,7 @@ class MarkdownView(Gtk.Box):
                  local('Twemoji Emoji');
         }
 
-        body { font-family: system-ui, 'Emoji', sans-serif; font-size: 15px; line-height: 1.5; color: #e0e0e0; margin: 0; padding: 8px; background: transparent; min-width: 600px; max-width: 900px; }
+        body { font-family: system-ui, 'Emoji', sans-serif; font-size: 15px; line-height: 1.5; color: #e0e0e0; margin: 0; padding: 8px; background: transparent; min-width: 300px; max-width: 500px; }
         h1, h2, h3 { color: #fff; margin-top: 0.8em; margin-bottom: 0.4em; font-weight: 600; }
         h1 { font-size: 1.5em; } h2 { font-size: 1.3em; } h3 { font-size: 1.15em; }
         p { margin: 0; }
@@ -347,6 +369,8 @@ class MarkdownView(Gtk.Box):
         """Update content (for streaming responses)"""
         logger.debug(f"MarkdownView.update_content called with {len(content)} characters")
         self.load_html(content)
+        # Force size recalculation so the view grows with content
+        self.queue_resize()
 
 
 class SourcesBox(Gtk.Box):
@@ -435,13 +459,23 @@ class ChatView(Gtk.Box):
     __gsignals__ = {
         'message-send': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
         'web-search-toggled': (GObject.SIGNAL_RUN_FIRST, None, (bool,)),
-        'conversation-mode-changed': (GObject.SIGNAL_RUN_FIRST, None, (object,))
+        'conversation-mode-changed': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        'regenerate-requested': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'message-deleted': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'stop-generation': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'continue-requested': (GObject.SIGNAL_RUN_FIRST, None, ())
     }
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
 
         self.add_css_class("chat-view")
+
+        # Create toast overlay for notifications (if Adw available)
+        if ADW_AVAILABLE:
+            self.toast_overlay = Adw.ToastOverlay()
+        else:
+            self.toast_overlay = None
 
         # Create overlay for floating navigation buttons
         self.main_overlay = Gtk.Overlay()
@@ -467,13 +501,23 @@ class ChatView(Gtk.Box):
         # Position floating buttons on right side
         self.main_overlay.add_overlay(nav_buttons)
 
-        # Add overlay to main view
-        self.append(self.main_overlay)
+        # Wrap main_overlay in toast_overlay for notifications (if available)
+        if self.toast_overlay:
+            self.toast_overlay.set_child(self.main_overlay)
+            self.append(self.toast_overlay)
+        else:
+            # No toast support - just add the main overlay directly
+            self.append(self.main_overlay)
 
         # Action bar for mode selection
         self.action_bar = ActionBar()
         self.action_bar.connect("mode-changed", self._on_mode_changed)
         self.append(self.action_bar)
+
+        # Continue/Regenerate bar (hidden by default)
+        self.continue_bar = self._create_continue_bar()
+        self.continue_bar.set_visible(False)
+        self.append(self.continue_bar)
 
         # Input area
         self.input_box = self.create_input_area()
@@ -524,6 +568,36 @@ class ChatView(Gtk.Box):
 
         # Show mode indicator toast
         self._show_mode_indicator(config)
+
+    def _create_continue_bar(self) -> Gtk.Box:
+        """Create the continue/regenerate bar"""
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        bar.set_halign(Gtk.Align.CENTER)
+        bar.set_margin_top(8)
+        bar.set_margin_bottom(8)
+
+        # Continue button
+        continue_btn = Gtk.Button()
+        continue_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        continue_icon = Gtk.Image.new_from_icon_name("media-playback-start-symbolic")
+        continue_icon.set_pixel_size(16)
+        continue_box.append(continue_icon)
+        continue_label = Gtk.Label(label="Continue")
+        continue_box.append(continue_label)
+        continue_btn.set_child(continue_box)
+        continue_btn.add_css_class("flat")
+        continue_btn.set_tooltip_text("Continue generating")
+        continue_btn.connect("clicked", self._on_continue_clicked)
+        bar.append(continue_btn)
+
+        return bar
+
+    def _on_continue_clicked(self, button):
+        """Handle continue button click"""
+        logger.info("Continue generation requested")
+        self.continue_bar.set_visible(False)
+        # Send "continue" as the message
+        self.emit('message-send', "continue")
 
     def _on_prompt_selected(self, widget, prompt):
         """Handle suggested prompt selection"""
@@ -635,6 +709,19 @@ class ChatView(Gtk.Box):
         self.send_button.set_sensitive(False)
         self.send_button.connect("clicked", self.on_send_clicked)
         button_container.append(self.send_button)
+
+        # Stop button (hidden by default, shown during generation)
+        self.stop_button = Gtk.Button()
+        stop_icon = Gtk.Image.new_from_icon_name("media-playback-stop-symbolic")
+        stop_icon.set_pixel_size(16)
+        self.stop_button.set_child(stop_icon)
+        self.stop_button.add_css_class("destructive-action")
+        self.stop_button.add_css_class("floating-button")
+        self.stop_button.set_valign(Gtk.Align.CENTER)
+        self.stop_button.set_tooltip_text("Stop generation")
+        self.stop_button.set_visible(False)
+        self.stop_button.connect("clicked", self.on_stop_clicked)
+        button_container.append(self.stop_button)
 
         # Add floating buttons as overlay
         overlay.add_overlay(button_container)
@@ -832,6 +919,9 @@ class ChatView(Gtk.Box):
             self.current_dot_index = 0
             self.typing_animation_timeout = GLib.timeout_add(500, self._animate_typing_indicator)
 
+        # Show stop button during generation
+        self.show_stop_button()
+
         # Scroll to bottom to show indicator
         GLib.timeout_add(100, self.scroll_to_bottom)
 
@@ -845,6 +935,26 @@ class ChatView(Gtk.Box):
         # Remove from parent
         if self.typing_indicator.get_parent():
             self.messages_box.remove(self.typing_indicator)
+
+    def start_generation(self):
+        """Start generation UI state"""
+        self.show_typing_indicator()
+        self.show_stop_button()
+
+    def finish_generation(self, was_stopped: bool = False):
+        """Finish generation UI state"""
+        self.hide_typing_indicator()
+        self.hide_stop_button()
+        self.continue_bar.set_visible(was_stopped)
+
+        # Stop thinking spinner if active on last assistant message
+        child = self.messages_box.get_last_child()
+        while child:
+            if isinstance(child, MessageRow):
+                if child.role == 'assistant' and hasattr(child, 'thinking_widget'):
+                    child.thinking_widget.set_thinking(False)
+                break
+            child = child.get_prev_sibling()
 
     def on_text_changed(self, buffer):
         """Enable/disable send button based on text"""
@@ -894,10 +1004,28 @@ class ChatView(Gtk.Box):
 
         if text.strip():
             print(f"DEBUG: Emitting message-send signal with text: '{text.strip()[:50]}...'")
+            self.continue_bar.set_visible(False)
             self.emit('message-send', text.strip())
             self.buffer.set_text("")  # Clear input
         else:
             print("DEBUG: No text to send")
+
+    def on_stop_clicked(self, button):
+        """Handle stop button click"""
+        logger.info("Stop generation requested")
+        self.emit('stop-generation')
+        self.hide_stop_button()
+        self.show_toast("Generation stopped")
+
+    def show_stop_button(self):
+        """Show stop button and hide send button during generation"""
+        self.send_button.set_visible(False)
+        self.stop_button.set_visible(True)
+
+    def hide_stop_button(self):
+        """Hide stop button and show send button"""
+        self.stop_button.set_visible(False)
+        self.send_button.set_visible(True)
 
     def add_message(self, role: str, content: str, timestamp: str = None,
                     web_sources: list = None, update_last: bool = False):
@@ -932,10 +1060,70 @@ class ChatView(Gtk.Box):
         else:
             # Create new message row
             message_row = MessageRow(role, content, timestamp, web_sources)
+
+            # Connect to message action signals
+            message_row.connect("copy-requested", self._on_copy_requested)
+            message_row.connect("regenerate-requested", self._on_regenerate_requested)
+            message_row.connect("delete-requested", self._on_delete_requested)
+
             self.messages_box.append(message_row)
 
         # Scroll to bottom
         GLib.timeout_add(100, self.scroll_to_bottom)
+
+    def _on_copy_requested(self, message_row, content):
+        """Handle copy request - show toast notification"""
+        self.show_toast("Copied to clipboard")
+        logger.info("Message copied to clipboard")
+
+    def show_toast(self, message: str, timeout: int = 2):
+        """Show a toast notification (if Adw available)"""
+        if ADW_AVAILABLE and self.toast_overlay:
+            toast = Adw.Toast(title=message, timeout=timeout)
+            self.toast_overlay.add_toast(toast)
+        else:
+            # Fallback: just log it
+            logger.info(f"Toast: {message}")
+
+    def _on_regenerate_requested(self, message_row):
+        """Handle regenerate request"""
+        logger.info("ChatView: Regenerate requested from MessageRow")
+        logger.info("DEBUG: ChatView emitting regenerate-requested signal to MainWindow")
+        self.emit("regenerate-requested")
+        logger.info("DEBUG: ChatView emitted regenerate-requested signal")
+
+    def _on_delete_requested(self, message_row):
+        """Handle delete request - show confirmation dialog"""
+        logger.info("Delete requested from MessageRow")
+        logger.info("DEBUG: Showing delete confirmation dialog")
+
+        # Show confirmation dialog using GTK4 API
+        def on_dialog_response(dialog, result):
+            """Handle dialog response"""
+            # result is an int representing the button index (0 = Cancel, 1 = Delete)
+            logger.info(f"DEBUG: Dialog response = {result}")
+            if result == 1:  # Delete button (index 1)
+                # Remove message from UI
+                self.messages_box.remove(message_row)
+                self.emit("message-deleted")
+                self.show_toast("Message deleted")
+                logger.info("Message deleted from UI")
+            else:
+                logger.info("Delete cancelled")
+
+        # Create alert dialog
+        dialog = Gtk.AlertDialog(
+            message="Delete this message?",
+            detail="This action cannot be undone.",
+            buttons=["Cancel", "Delete"]
+        )
+
+        # Show the dialog
+        dialog.choose(
+            parent=self.get_root(),
+            callback=on_dialog_response
+        )
+
 
     def scroll_to_bottom(self):
         """Scroll messages view to bottom"""
@@ -975,6 +1163,12 @@ class ChatView(Gtk.Box):
 class MessageRow(Gtk.Box):
     """Single message display row with bubble layout"""
 
+    __gsignals__ = {
+        'copy-requested': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+        'regenerate-requested': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'delete-requested': (GObject.SIGNAL_RUN_FIRST, None, ())
+    }
+
     def __init__(self, role: str, content: str, timestamp: str = None, web_sources: list = None):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
@@ -1007,23 +1201,49 @@ class MessageRow(Gtk.Box):
             # User bubble
             self.content_widget = self._create_user_bubble(content)
             align_container.append(self.content_widget)
+
+            # Action buttons (hidden by default, shown on hover via CSS)
+            self.actions_box = self._create_action_buttons()
+            self.actions_box.set_halign(Gtk.Align.START)  # Don't stretch
+            align_container.append(self.actions_box)
+
             self.append(align_container)
 
             # No web sources for user messages
             self.sources_box = None
         else:
-            # Assistant messages: align to left
+            # Assistant messages: align to left, expand to allow percentage width
+            self.set_hexpand(True)  # MessageRow should expand to fill available space
+            self.set_halign(Gtk.Align.FILL)  # Fill the available width
+
             align_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-            align_container.set_halign(Gtk.Align.START)
-            align_container.set_hexpand(True)
+            align_container.set_halign(Gtk.Align.FILL)
+            align_container.set_hexpand(True)  # Expand to fill available space
 
             # Assistant label with timestamp
             header_box = self._create_message_header("Assistant", timestamp)
             align_container.append(header_box)
 
-            # Assistant bubble
+            # Thinking Widget (outside width constraint so it can be wider while streaming)
+            self.thinking_widget = ThinkingWidget()
+            self.thinking_widget.set_visible(False)
+            align_container.append(self.thinking_widget)
+
+            # Create a wrapper to constrain width of the actual response
+            width_constraint = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            width_constraint.set_halign(Gtk.Align.START)
+            width_constraint.set_hexpand(False)
+            width_constraint.set_size_request(650, -1)  # Constrain assistant response to ~650px
+            width_constraint.add_css_class("assistant-bubble-wrapper")
+
+            # Assistant bubble (initially empty or full content, update_content will handle split)
             self.content_widget = self._create_assistant_bubble(content)
-            align_container.append(self.content_widget)
+            width_constraint.append(self.content_widget)
+            align_container.append(width_constraint)
+
+            # Trigger content parsing to handle <think> block if present
+            self.update_content(content)
+
 
             # Web sources (if any)
             self.sources_box = None
@@ -1031,7 +1251,61 @@ class MessageRow(Gtk.Box):
                 self.sources_box = SourcesBox(web_sources)
                 align_container.append(self.sources_box)
 
+            # Action buttons (hidden by default, shown on hover via CSS)
+            self.actions_box = self._create_action_buttons()
+            self.actions_box.set_halign(Gtk.Align.START)  # Don't stretch
+            align_container.append(self.actions_box)
+
             self.append(align_container)
+
+    def _create_action_buttons(self) -> Gtk.Box:
+        """Create action buttons for copy, regenerate, delete"""
+        actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        actions_box.add_css_class("message-actions")
+
+        # Copy button
+        copy_btn = Gtk.Button()
+        copy_btn.set_icon_name("edit-copy-symbolic")
+        copy_btn.set_tooltip_text("Copy message")
+        copy_btn.add_css_class("message-action-button")
+        copy_btn.connect("clicked", self._on_copy_clicked)
+        actions_box.append(copy_btn)
+
+        # Regenerate button (assistant messages only)
+        if self.role == 'assistant':
+            regenerate_btn = Gtk.Button()
+            regenerate_btn.set_icon_name("view-refresh-symbolic")
+            regenerate_btn.set_tooltip_text("Regenerate response")
+            regenerate_btn.add_css_class("message-action-button")
+            regenerate_btn.connect("clicked", self._on_regenerate_clicked)
+            actions_box.append(regenerate_btn)
+
+        # Delete button
+        delete_btn = Gtk.Button()
+        delete_btn.set_icon_name("edit-delete-symbolic")
+        delete_btn.set_tooltip_text("Delete message")
+        delete_btn.add_css_class("message-action-button")
+        delete_btn.connect("clicked", self._on_delete_clicked)
+        actions_box.append(delete_btn)
+
+        return actions_box
+
+    def _on_copy_clicked(self, button):
+        """Handle copy button click"""
+        logger.info("Copy button clicked")
+        clipboard = Gdk.Display.get_default().get_clipboard()
+        clipboard.set_content(Gdk.ContentProvider.new_for_value(self.content))
+        self.emit("copy-requested", self.content)
+
+    def _on_regenerate_clicked(self, button):
+        """Handle regenerate button click"""
+        logger.info("Regenerate button clicked, emitting signal")
+        self.emit("regenerate-requested")
+
+    def _on_delete_clicked(self, button):
+        """Handle delete button click"""
+        logger.info("Delete button clicked, emitting signal")
+        self.emit("delete-requested")
 
     def _create_message_header(self, role_name: str, timestamp: str) -> Gtk.Box:
         """Create message header with role label and timestamp"""
@@ -1112,8 +1386,7 @@ class MessageRow(Gtk.Box):
         bubble.load_html(content)
         bubble.add_css_class("message-bubble")
         bubble.add_css_class("assistant-bubble")
-        bubble.set_hexpand(True)
-        bubble.set_size_request(600, -1)  # Set minimum width of 600px
+        bubble.set_hexpand(False)  # Don't expand horizontally
         logger.debug(f"Created assistant bubble with {len(content)} chars of content")
         return bubble
 
@@ -1121,7 +1394,66 @@ class MessageRow(Gtk.Box):
         """Update the message content (for streaming responses)"""
         self.content = content
         if self.role == 'assistant':
-            self.content_widget.update_content(content)
+            # Check for <think> or <thought> block
+            import re
+            
+            # Simple debug logging
+            is_think = '</think>' in content or '<thought>' in content
+            if is_think:
+                logger.info(f"DEBUG: Found thinking tag in content. Content len={len(content)}")
+                logger.debug(f"DEBUG: Content preview: {content[:200]}...")
+
+            # Match <think>...</think> or <thought>...</thought>
+            # Group 1: tag name (think/thought)
+            # Group 2: content
+            # Group 3: closing tag or end of string
+            match = re.search(r'<(think|thought)>(.*?)(</\1>|$)', content, re.DOTALL)
+            
+            if is_think and not match:
+                logger.warning("DEBUG: Thinking tag found but Regex FAILED to match!")
+            
+            if match:
+                tag_name = match.group(1)
+                thinking_text = match.group(2)
+                closing_tag = match.group(3)
+                is_done = closing_tag == f'</{tag_name}>'
+                
+                # Update thinking widget
+                if hasattr(self, 'thinking_widget'):
+                    self.thinking_widget.set_visible(True)
+                    # Check if content has actually changed to avoid unnecessary updates
+                    current_buffer = self.thinking_widget.text_buffer
+                    start, end = current_buffer.get_bounds()
+                    current_text = start.get_text(end) if start and end else ""
+
+                    # Only update if content is different
+                    if thinking_text != current_text:
+                        self.thinking_widget.set_content(thinking_text)
+                        logger.debug(f"Updated thinking widget: {len(thinking_text)} chars")
+
+                    self.thinking_widget.set_thinking(not is_done)
+                
+                # Determine main content
+                if is_done:
+                    # Content after the </think> tag
+                    main_content = content[match.end():]
+                    # Strip leading whitespace which often follows the closing tag
+                    main_content = main_content.lstrip()
+                else:
+                    # Still thinking, usually main content is empty or hidden
+                    main_content = ""
+                
+                if main_content:
+                    self.content_widget.set_visible(True)
+                    self.content_widget.update_content(main_content)
+                else:
+                    self.content_widget.set_visible(False)
+            else:
+                # No thinking block
+                if hasattr(self, 'thinking_widget'):
+                    self.thinking_widget.set_visible(False)
+                self.content_widget.set_visible(True)
+                self.content_widget.update_content(content)
         else:
             self.content_widget.set_label(content)
 

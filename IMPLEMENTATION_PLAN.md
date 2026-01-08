@@ -217,3 +217,120 @@ This requires setting up the Rust toolchain and PyO3 bindings.
 3. **Then Export** - Frequently requested feature
 
 Would you like me to start implementing any of these features?
+
+---
+
+## 🆕 UI Improvements (Inspired by Newelle Project)
+
+These enhancements are based on patterns from the [Newelle](https://github.com/qwersyk/Newelle) GTK4 chat application.
+
+### Quick Wins (Low Effort, High Impact)
+- [x] **Toast Notifications** ⏱️ 30 mins (Implemented)
+- [x] **Responsive Layout with Breakpoints** ⏱️ 1 hour (Implemented)
+- [x] **Stop Generation Button** ⏱️ 1 hour (Implemented)
+- [x] **Continue Button** ⏱️ 30 mins (Implemented)
+- [x] **Centered Conversation Titles** (Implemented)
+
+#### 1. **Toast Notifications**
+Show temporary "Copied to clipboard" notification when copying messages.
+```python
+# Use Adw.ToastOverlay
+notification_block = Adw.ToastOverlay()
+notification_block.add_toast(Adw.Toast(title="Copied to clipboard", timeout=2))
+```
+
+#### 2. **Responsive Layout with Breakpoints**
+Auto-collapse sidebar on narrow windows.
+
+#### 3. **Stop Generation Button**
+Allow users to stop message generation mid-stream.
+- Show "Stop" button while generating
+- Cancel API request when clicked
+- Keep partial response
+
+#### 4. **Continue Button**
+Continue generating if response was cut off.
+- Detect truncated responses
+- Send "continue" prompt with context
+
+### Medium Effort Improvements
+
+#### 5. **ThinkingWidget for Reasoning Models** ⏱️ 2-3 hours
+Collapsible widget showing AI thinking process.
+- Works with Claude's `<think>` blocks
+- Animated spinner during thinking
+- Expandable text showing reasoning
+
+#### 6. **Code Syntax Highlighting with GtkSource** ⏱️ 2-3 hours
+Replace basic code blocks with proper syntax highlighting.
+```python
+from gi.repository import GtkSource
+sourceview = GtkSource.View(monospace=True)
+manager = GtkSource.LanguageManager.new()
+language = manager.get_language("python")
+buffer.set_language(language)
+```
+
+#### 7. **File Drag-and-Drop** ⏱️ 2 hours
+Allow dragging files into chat.
+```python
+drop_target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+drop_target.connect("drop", self.handle_file_drag)
+self.chat_view.add_controller(drop_target)
+```
+
+#### 8. **Chat Switch Animations** ⏱️ 1 hour
+Smooth slide animations when switching conversations.
+```python
+chat_stack = Gtk.Stack(
+    transition_type=Gtk.StackTransitionType.SLIDE_UP, 
+    transition_duration=300
+)
+```
+
+### Future Enhancements
+
+#### 9. **Voice Input (Mic Button)** ⏱️ 4-6 hours
+- Add microphone button next to input
+- Record audio and transcribe
+- Requires STT integration
+
+#### 10. **Profile System** ⏱️ 4-6 hours
+- Multiple assistant personalities
+- Per-profile settings
+- Profile-specific system prompts
+
+#### 11. **Zoom Support** ⏱️ 1 hour
+- Allow UI scaling
+- Persist zoom level in settings
+
+---
+
+## Implementation Notes
+
+### GTK4 Best Practices (from Newelle)
+
+1. **Thread Safety**: Always use `GLib.idle_add()` for UI updates from background threads
+2. **Widget Sizing**: Use `width_chars=1` with `wrap=True` to prevent Labels from expanding
+3. **Dynamic Sizing**: Use `create_pango_layout()` to calculate text dimensions
+4. **Transparent Backgrounds**: Use `apply_css_to_widget()` helper for inline CSS
+5. **Responsive Design**: Use `Adw.Breakpoint` for adaptive layouts
+
+### Reference Code Patterns
+
+```python
+# Apply inline CSS to a widget
+def apply_css_to_widget(widget, css_string):
+    provider = Gtk.CssProvider()
+    provider.load_from_data(css_string.encode())
+    widget.get_style_context().add_provider(
+        provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+
+# Scroll to bottom of text
+def scroll_to_end(textview, textbuffer):
+    end_iter = textbuffer.get_end_iter()
+    end_mark = textbuffer.create_mark("end_mark", end_iter, False)
+    textview.scroll_to_mark(end_mark, 0.0, True, 0.0, 1.0)
+    GLib.idle_add(textbuffer.delete_mark, end_mark)
+```

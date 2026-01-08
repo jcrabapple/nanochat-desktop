@@ -282,16 +282,29 @@ class NanoGPTClient:
                     if 'choices' in data and len(data['choices']) > 0:
                         delta = data['choices'][0].get('delta', {})
                         content = delta.get('content', '')
+
+                        # Check multiple possible field names for reasoning content
+                        # NanoGPT uses 'reasoning', OpenAI uses 'reasoning_content'
+                        reasoning = delta.get('reasoning_content') or delta.get('reasoning')
+
+                        # Log all delta fields to identify thinking formats
+                        if reasoning or (content and ('think' in content.lower() or 'reasoning' in content.lower())):
+                            logger.info(f"Delta keys: {list(delta.keys())}")
+                            logger.info(f"Content preview: {content[:200] if content else 'None'}...")
+                            if reasoning:
+                                logger.info(f"Reasoning preview: {reasoning[:200]}...")
+
                         finish_reason = data['choices'][0].get('finish_reason')
 
                         done = finish_reason is not None
                         web_sources = data.get('web_sources')
 
-                        if content or done:
+                        if content or reasoning or done:
                             yield StreamChunk(
                                 content=content,
                                 done=done,
-                                web_sources=web_sources
+                                web_sources=web_sources,
+                                reasoning=reasoning
                             )
                     elif 'content' in data:
                         # Alternative format

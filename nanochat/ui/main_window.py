@@ -1,7 +1,17 @@
 import os
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Gdk, GLib
+
+# Try to import Adw (libadwaita) - optional for responsive features
+try:
+    gi.require_version('Adw', '1')
+    from gi.repository import Gtk, Gdk, GLib, Adw
+    ADW_AVAILABLE = True
+except (ValueError, ImportError):
+    from gi.repository import Gtk, Gdk, GLib
+    Adw = None
+    ADW_AVAILABLE = False
+
 from nanochat.ui.header_bar import HeaderBar
 from nanochat.ui.sidebar import Sidebar
 from nanochat.ui.chat_view import ChatView
@@ -9,7 +19,11 @@ from nanochat.ui.settings_dialog import SettingsDialog
 from nanochat.ui.project_dialog import ProjectDialog, MoveToProjectDialog
 
 
-class MainWindow(Gtk.ApplicationWindow):
+# Determine base class based on Adw availability
+_BaseWindow = Adw.ApplicationWindow if ADW_AVAILABLE else Gtk.ApplicationWindow
+
+
+class MainWindow(_BaseWindow):
     """Main application window"""
 
     def __init__(self, app):
@@ -18,7 +32,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Window properties
         self.set_title("NanoChat Desktop")
         self.set_default_size(1200, 800)
-        self.set_size_request(800, 600)
+        self.set_size_request(600, 500)
 
         # Load CSS
         self.load_css()
@@ -56,13 +70,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def create_ui(self):
         """Create main UI layout"""
-        # Main box
-        main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        self.set_child(main_box)
-
         # Header bar
         self.header_bar = HeaderBar()
-        self.set_titlebar(self.header_bar)
 
         # Sidebar
         self.sidebar = Sidebar()
@@ -75,24 +84,70 @@ class MainWindow(Gtk.ApplicationWindow):
         self.sidebar.connect('project-selected', self.on_project_selected)
         self.sidebar.connect('project-deleted', self.on_project_deleted)
         self.sidebar.connect('settings-clicked', self.on_settings)
-        main_box.append(self.sidebar)
-
-        # Separator
-        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
-        main_box.append(separator)
 
         # Chat view
         self.chat_view = ChatView()
         self.chat_view.connect('message-send', self.on_message_send)
         self.chat_view.connect('web-search-toggled', self.on_web_search_toggled)
         self.chat_view.connect('conversation-mode-changed', self.on_conversation_mode_changed)
-        main_box.append(self.chat_view)
+        self.chat_view.connect('regenerate-requested', self.on_regenerate_requested)
+        self.chat_view.connect('message-deleted', self.on_message_deleted)
+
+        if ADW_AVAILABLE:
+            # Use Adw.ToolbarView to wrap content with header bar
+            toolbar_view = Adw.ToolbarView()
+            toolbar_view.add_top_bar(self.header_bar)
+
+            # Use Adw.OverlaySplitView for responsive sidebar
+            self.split_view = Adw.OverlaySplitView()
+            self.split_view.set_collapsed(False)
+            self.split_view.set_min_sidebar_width(280)
+            self.split_view.set_max_sidebar_width(400)
+
+            # Set up split view
+            self.split_view.set_sidebar(self.sidebar)
+            self.split_view.set_content(self.chat_view)
+
+            # Add split view to toolbar view
+            toolbar_view.set_content(self.split_view)
+            self.set_content(toolbar_view)
+
+            # Add responsive breakpoint - collapse sidebar below 800px
+            breakpoint = Adw.Breakpoint(
+                condition=Adw.BreakpointCondition.parse("max-width: 800px")
+            )
+            breakpoint.add_setter(self.split_view, "collapsed", True)
+            self.add_breakpoint(breakpoint)
+
+            # Add toggle button to header bar for showing/hiding sidebar when collapsed
+            self.sidebar_toggle = Gtk.ToggleButton(active=True)
+            self.sidebar_toggle.set_icon_name("view-list-symbolic")
+            self.sidebar_toggle.set_tooltip_text("Toggle Sidebar")
+            self.sidebar_toggle.connect("toggled", self._on_sidebar_toggle)
+            self.header_bar.pack_start(self.sidebar_toggle)
+        else:
+            # Fallback: simple horizontal layout without responsive features
+            self.set_titlebar(self.header_bar)
+
+            main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            self.set_child(main_box)
+            main_box.append(self.sidebar)
+
+            separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+            main_box.append(separator)
+
+            main_box.append(self.chat_view)
 
         # Show welcome screen
         self.chat_view.show_welcome()
 
         # Add keyboard shortcuts
         self.setup_shortcuts()
+
+    def _on_sidebar_toggle(self, button):
+        """Toggle sidebar visibility"""
+        if ADW_AVAILABLE and hasattr(self, 'split_view'):
+            self.split_view.set_show_sidebar(button.get_active())
 
     def setup_shortcuts(self):
         """Setup keyboard shortcuts"""
@@ -166,6 +221,101 @@ class MainWindow(Gtk.ApplicationWindow):
         if self.app_state:
             self.app_state.set_conversation_mode(mode)
             print(f"Conversation mode changed to: {mode.value}")
+
+    def on_regenerate_requested(self, chat_view):
+        """Handle regenerate request from message row"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("MainWindow: Received regenerate-requested signal")
+
+        # Check app_state directly instead of cached value
+        # because conversation might be created during message send
+        if not self.app_state or not self.app_state.current_conversation_id:
+            logger.error("Cannot regenerate: No active conversation")
+            return
+
+        # Sync the cached value
+        self.current_conversation_id = self.app_state.current_conversation_id
+        logger.info(f"Using conversation ID: {self.current_conversation_id}")
+        # Remove the last assistant message from UI (it will be deleted from DB during regeneration)
+        # Find and remove the last assistant message row
+        import threading
+        import asyncio
+
+        def run_regeneration():
+            async def regenerate():
+                try:
+                    logger.info("Removing last assistant message from UI")
+                    # First, remove the last assistant message from UI
+                    child = chat_view.messages_box.get_last_child()
+                    while child:
+                        from nanochat.ui.chat_view import MessageRow
+                        if isinstance(child, MessageRow) and child.role == 'assistant':
+                            def remove_msg(child=child):
+                                chat_view.messages_box.remove(child)
+                                logger.info("Removed assistant message from UI")
+                            GLib.idle_add(remove_msg)
+                            break
+                        child = child.get_prev_sibling()
+
+                    logger.info("Calling app_state.regenerate_last_response()")
+                    # Now regenerate the response
+                    # Accumulate content and update the message incrementally
+                    # First create empty message
+                    def create_empty_msg():
+                        chat_view.add_message('assistant', "", update_last=False)
+                        logger.info("Created empty assistant message for regeneration")
+                    GLib.idle_add(create_empty_msg)
+
+                    # Accumulate content and update periodically
+                    accumulated = ""
+                    async for role, content, web_sources in self.app_state.regenerate_last_response():
+                        if role == 'assistant':
+                            if content:
+                                accumulated += content
+                                # Update UI with accumulated content
+                                content_copy = accumulated
+                                def add_msg(c=content_copy):
+                                    chat_view.add_message('assistant', c, update_last=True)
+                                    logger.info(f"Updated regenerated message (total {len(c)} chars)")
+                                GLib.idle_add(add_msg)
+                            if web_sources:
+                                def add_src(ws=web_sources):
+                                    chat_view.add_message('assistant', "", web_sources=ws, update_last=True)
+                                    logger.info("Added web sources to UI")
+                                GLib.idle_add(add_src)
+
+                    # Refresh sidebar to update conversation preview
+                    logger.info("Refreshing sidebar")
+                    GLib.idle_add(self.refresh_projects_and_conversations)
+                    logger.info("Regeneration complete")
+
+                except Exception as e:
+                    logger.error(f"Error during regeneration: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    def show_error(msg=str(e)):
+                        # Try to show error dialog
+                        try:
+                            self.show_error_dialog(f"Regeneration failed: {msg}")
+                        except:
+                            pass
+                    GLib.idle_add(show_error)
+
+            asyncio.run(regenerate())
+
+        # Run in background thread
+        thread = threading.Thread(target=run_regeneration, daemon=True)
+        thread.start()
+        logger.info("Started regeneration thread")
+
+    def on_message_deleted(self, chat_view):
+        """Handle message deletion from chat view"""
+        print("Message deleted from UI")
+        # The UI has already been updated by the chat_view
+        # We could add database cleanup here if needed
+        # For now, messages are only deleted from UI, not from database
+        # (full message deletion from DB would require tracking which message was deleted)
 
     def on_new_chat(self, sidebar):
         """Handle new chat button"""
@@ -245,6 +395,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 message,
                 self.web_search_enabled
             )
+            # Sync current_conversation_id with app_state after message send
+            # This ensures regenerate works for newly created conversations
+            if self.app_state:
+                self.current_conversation_id = self.app_state.current_conversation_id
+                print(f"DEBUG: Synced current_conversation_id to {self.current_conversation_id}")
         else:
             print("DEBUG: No app controller available")
 

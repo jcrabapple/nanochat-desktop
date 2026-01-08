@@ -49,3 +49,4 @@ class StreamChunk:
     content: str
     done: bool = False
     web_sources: Optional[List[Dict[str, str]]] = None
+    reasoning: Optional[str] = None

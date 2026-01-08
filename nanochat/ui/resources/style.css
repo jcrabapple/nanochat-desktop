@@ -85,7 +85,11 @@ button.suggested-action:hover {
     color: #e0e0e0;
     border-bottom-left-radius: 4px;
     /* Visual indicator for message source */
-    /* No max-width constraint - let it expand naturally */
+}
+
+/* Assistant bubble wrapper - width constrained via Python */
+.assistant-bubble-wrapper {
+    /* Width controlled in Python code with set_size_request() */
 }
 
 /* Message headers - show role labels */
@@ -601,4 +605,63 @@ button.destructive-action:hover {
 
 .markdown-textview text {
     background-color: transparent;
+}
+
+/* ==================== Message Action Buttons ==================== */
+
+/* Message actions container - hidden by default */
+.message-actions {
+    opacity: 0;
+    transition: opacity 200ms ease;
+    margin-top: 4px;
+}
+
+/* Show actions when hovering over the message row */
+.message-row.user:hover .message-actions,
+.message-row.assistant:hover .message-actions {
+    opacity: 1;
+}
+
+/* Individual message action buttons */
+.message-action-button {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #a0a0a0;
+    border: none;
+    padding: 4px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 4px;
+    transition: all 200ms ease;
+}
+
+.message-action-button:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #e0e0e0;
+}
+
+.message-action-button:active {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+
+/* Thinking Widget Styling */
+
+.thinking-widget {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.thinking-header {
+    font-weight: 500;
+    color: #a0a0a0;
+    font-size: 0.9em;
+}
+
+.thinking-content {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+    font-size: 0.9em;
+    background: transparent;
+    color: #b0b0b0;
 }

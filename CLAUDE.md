@@ -72,11 +72,13 @@ The application follows a clear MVC pattern with async/streaming support:
 
 **Database (`nanochat/data/`)**
 - SQLAlchemy ORM with SQLite backend
-- `DatabaseManager`: Session management
+- `DatabaseManager`: Session management with migration support
 - `ConversationRepository`: CRUD for conversations
 - `MessageRepository`: CRUD for messages with web sources
-- Models: `Conversation`, `Message` (see `nanochat/data/models.py`)
+- `ProjectRepository`: CRUD for conversation projects
+- Models: `Conversation`, `Message`, `Project`, `SuggestedPrompt` (see `nanochat/data/models.py`)
 - Database location: `~/.local/share/nanochat/conversations.db`
+- Migrations: Located in `nanochat/data/migrations/`
 
 ### Controller Layer (`nanochat/state/`)
 
@@ -96,11 +98,16 @@ The application follows a clear MVC pattern with async/streaming support:
 **Component Structure:**
 - `main_window.py`: Application shell, assembles all components
 - `header_bar.py`: Top bar with settings button
-- `sidebar.py`: Conversation list with search/filter
+- `sidebar.py`: Conversation list with search/filter, project management
+  - Groups conversations by projects or time (Today, Yesterday, etc.)
+  - Project CRUD operations
+  - Conversation-to-project assignment
 - `chat_view.py`: Main chat area with message display and input
   - `MarkdownView`: WebView (WebKit2) or TextView fallback for markdown rendering
   - `ActionBar`: Mode selection buttons
+  - Message action buttons (copy, regenerate, delete)
 - `settings_dialog.py`: Two-tab dialog (API Configuration | Modes)
+- `project_dialog.py`: Project creation and management dialogs
 
 **CSS Styling:**
 - Located in `nanochat/ui/resources/style.css`
@@ -108,14 +115,20 @@ The application follows a clear MVC pattern with async/streaming support:
 - Components use `add_css_class()` to apply styles
 - Dark theme matching GTK4 aesthetic
 
+**Responsive Design:**
+- Uses Adw.OverlaySplitView for responsive sidebar (when libadwaita is available)
+- Sidebar collapses below 800px window width
+- Toggle button in header bar shows/hides sidebar when collapsed
+- Falls back to fixed horizontal layout without libadwaita
+
 ### Configuration (`nanochat/config.py`)
 
 Multi-source configuration with priority:
 1. Environment variables (`NANOCHAT_API_KEY`, etc.)
-2. Config file (`~/.config/nanochat-desktop/.env`)
+2. Config file (`~/.config/nanochat-desktop/config.ini`)
 3. Defaults
 
-Config file uses `.env` format (not INI despite old docs mentioning config.ini).
+Config file uses simple key=value format (not .env format despite code variable names).
 
 ## Key Patterns
 
@@ -166,6 +179,17 @@ self.sidebar.connect('conversation-selected', self.on_conversation_selected)
 # Custom signals defined with GObject.register_signal()
 ```
 
+### Keyboard Shortcuts
+
+Global keyboard shortcuts (defined in `MainWindow.setup_shortcuts()`):
+- `Ctrl+N`: New chat
+- `Ctrl+W`: Toggle web search
+- `Ctrl+,`: Open settings
+- `Ctrl+Q`: Quit application
+
+Conversation mode shortcuts:
+- `Ctrl+1` through `Ctrl+5`: Switch to specific mode (Standard, Create, Explore, Code, Learn)
+
 ### Web Search Integration
 
 Web search is per-conversation (stored in `Conversation.web_search_enabled`):
@@ -173,6 +197,23 @@ Web search is per-conversation (stored in `Conversation.web_search_enabled`):
 - Some modes auto-enable web search (Explore, Learn)
 - Web sources stored as JSON in `Message.web_sources`
 - Displayed as clickable links below assistant messages
+
+### Regenerate Feature
+
+Users can regenerate the last assistant response:
+- Click regenerate button on the last assistant message
+- `ApplicationState.regenerate_last_response()` deletes the last assistant message from database
+- Makes a new API call with the same conversation history
+- Updates UI in real-time with new response
+- Uses async generator pattern like normal message sending
+
+### Suggested Prompts
+
+Welcome screen displays mode-aware suggested prompts:
+- `SuggestedPrompt` model stores prompts in database
+- Each prompt has a `mode` field for different conversation modes
+- `SuggestedPromptsView` filters and displays relevant prompts
+- Clicking a prompt automatically sends it as a message
 
 ## Data Flow
 
@@ -220,9 +261,36 @@ def _on_mode_toggled(self, button, mode):
     self._updating_mode = False
 ```
 
+### GTK Widget Sizing
+
+**Critical**: `set_size_request()` sets a MINIMUM size, not a maximum. GTK will expand widgets beyond `set_size_request()` if content is longer or parent container expands.
+
+To constrain widget width:
+1. Use CSS `max-width` property
+2. Set `set_hexpand(False)` to prevent horizontal expansion
+3. Use wrapper widgets with alignment constraints
+4. Set `set_halign(Gtk.Align.START)` for left-aligned widgets
+
+Example of constraining a message bubble:
+```python
+wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+wrapper.set_halign(Gtk.Align.START)
+wrapper.set_hexpand(False)
+wrapper.add_css_class("constrained-width")
+wrapper.append(content_widget)
+```
+
+With CSS:
+```css
+.constrained-width {
+    max-width: 100px;
+    width: 100px;
+}
+```
+
 ### Configuration Persistence
 
-Settings are saved to `~/.config/nanochat-desktop/.env` file. When settings change, the dialog directly calls `config.save_to_file()` and reinitializes the API client via `app_state.init_api_client()`.
+Settings are saved to `~/.config/nanochat-desktop/config.ini` file. When settings change, the dialog directly calls `config.save_to_file()` and reinitializes the API client via `app_state.init_api_client()`.
 
 ## Testing
 

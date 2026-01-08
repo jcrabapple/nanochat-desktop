@@ -106,6 +106,22 @@ class ApplicationState:
                 for conv in conversations
             ]
 
+    def get_conversation(self, conversation_id: int):
+        """Get a specific conversation"""
+        with self.db.get_session() as session:
+            conv_repo = ConversationRepository(session)
+            conv = conv_repo.get_conversation(conversation_id)
+            if conv:
+                return {
+                    'id': conv.id,
+                    'title': conv.title,
+                    'updated_at': conv.updated_at.isoformat(),
+                    'message_count': len(conv.messages),
+                    'web_search_enabled': getattr(conv, 'web_search_enabled', False),
+                    'project_id': getattr(conv, 'project_id', None)
+                }
+            return None
+
     def delete_conversation(self, conversation_id: int) -> bool:
         """Delete a conversation"""
         with self.db.get_session() as session:
@@ -296,6 +312,151 @@ Assistant: {assistant_msg}"""
             stream=True
         )
 
+        message_saved = False
+        in_thinking_block = False
+        try:
+            async for chunk in gen:
+                to_yield = ""
+                
+                # Handle reasoning content (normalize to <think> tags)
+                if chunk.reasoning:
+                    if not in_thinking_block:
+                        to_yield += "<think>"
+                        in_thinking_block = True
+                    to_yield += chunk.reasoning
+                
+                # Handle standard content
+                if chunk.content:
+                    if in_thinking_block:
+                        to_yield += "</think>"
+                        in_thinking_block = False
+                    to_yield += chunk.content
+                
+                # Handle completion of thinking if done
+                if chunk.done and in_thinking_block:
+                    to_yield += "</think>"
+                    in_thinking_block = False
+
+                if to_yield:
+                    # Debug log for thinking content
+                    if '</think>' in to_yield or '<thought>' in to_yield:
+                        logger.info(f"Yielding thinking content: {len(to_yield)} chars")
+                        logger.debug(f"Thinking preview: {to_yield[:200]}...")
+                    response_content += to_yield
+                    yield ('assistant', to_yield, None)
+
+                # Capture web_sources when available
+                if chunk.web_sources:
+                    web_sources = chunk.web_sources
+                    used_web_search = True
+
+                if chunk.done:
+                    # Save assistant message WITH web_sources
+                    with self.db.get_session() as session:
+                        msg_repo = MessageRepository(session)
+                        msg_repo.create_message(
+                            self.current_conversation_id,
+                            'assistant',
+                            response_content,
+                            used_web_search=used_web_search,
+                            web_sources=json.dumps(web_sources) if web_sources else None
+                        )
+                    message_saved = True
+
+                    # Final yield with sources
+                    yield ('assistant', None, web_sources)
+                    break
+        finally:
+            # Ensure message is saved if generation was interrupted (e.g. stop button)
+            if not message_saved and response_content:
+                logger.info("Saving interrupted/partial assistant message")
+                try:
+                    with self.db.get_session() as session:
+                        msg_repo = MessageRepository(session)
+                        msg_repo.create_message(
+                            self.current_conversation_id,
+                            'assistant',
+                            response_content,
+                            used_web_search=used_web_search,
+                            web_sources=json.dumps(web_sources) if web_sources else None
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to save partial message: {e}")
+
+            # Ensure generator is closed to clean up resources
+            await gen.aclose()
+
+    async def regenerate_last_response(self):
+        """
+        Regenerate the last assistant response
+
+        This method:
+        1. Gets the last user message
+        2. Deletes the last assistant message from database
+        3. Re-sends the user message to get a new response
+
+        Yields:
+            Tuples of (role, content, web_sources) as they arrive
+        """
+        import json
+
+        if not self.api_client:
+            raise ValueError("API client not initialized")
+
+        if not self.current_conversation_id:
+            raise ValueError("No active conversation")
+
+        # Get conversation history
+        messages = self.get_conversation_messages(self.current_conversation_id)
+
+        if len(messages) < 2:
+            raise ValueError("Not enough messages to regenerate")
+
+        # Find the last user message and last assistant message
+        last_user_msg = None
+        last_assistant_msg_id = None
+
+        # Get message IDs from database
+        with self.db.get_session() as session:
+            msg_repo = MessageRepository(session)
+            all_messages = msg_repo.get_messages(self.current_conversation_id)
+
+            # Find the last assistant message (most recent)
+            if all_messages and all_messages[-1].role == 'assistant':
+                last_assistant_msg_id = all_messages[-1].id
+
+            # Find the last user message
+            for msg in reversed(all_messages):
+                if msg.role == 'user':
+                    last_user_msg = msg.content
+                    break
+
+        if not last_user_msg:
+            raise ValueError("No user message found to regenerate")
+
+        # Delete the last assistant message from database
+        if last_assistant_msg_id:
+            with self.db.get_session() as session:
+                msg_repo = MessageRepository(session)
+                msg_repo.delete_message(last_assistant_msg_id)
+                logger.info(f"Deleted assistant message {last_assistant_msg_id} for regeneration")
+
+        # Get updated conversation history (without the deleted assistant message)
+        history = self.get_conversation_messages(self.current_conversation_id)
+
+        # Send to API and stream response
+        response_content = ""
+        web_sources = None
+        used_web_search = False
+
+        # Create generator and ensure it's properly closed
+        gen = self.api_client.send_message(
+            message=last_user_msg,
+            conversation_history=history,
+            use_web_search=False,  # Use same web search setting as before
+            stream=True
+        )
+
         try:
             async for chunk in gen:
                 if chunk.content:
@@ -308,7 +469,7 @@ Assistant: {assistant_msg}"""
                     used_web_search = True
 
                 if chunk.done:
-                    # Save assistant message WITH web_sources
+                    # Save new assistant message
                     with self.db.get_session() as session:
                         msg_repo = MessageRepository(session)
                         msg_repo.create_message(

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.4.0"
+VERSION="0.5.0"
 ARCH="x86_64"
 APPNAME="NanoChatDesktop"
 BUILDDIR="build/appimage-build"
